@@ -1,0 +1,3 @@
+pip install openai langdetect googletrans==4.0.0-rc1
+
+API_KEY = "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"
