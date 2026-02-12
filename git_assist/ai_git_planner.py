@@ -46,18 +46,43 @@ class AIGitPlanner:
         openai.api_key = api_key
 
     def generate_plan(self, user_input):
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_input}
-            ],
-            temperature=0
-        )
+        # Retry with fallback models
+        models = ["gpt-4", "gpt-3.5-turbo"]
+        last_error = Exception("Unknown AI Error")
 
-        content = response["choices"][0]["message"]["content"]
+        for model in models:
+            try:
+                print(f"[DEBUG] Requesting Plan from {model}...")
+                response = openai.ChatCompletion.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_input}
+                    ],
+                    temperature=0
+                )
 
-        return json.loads(content)
+                content = response["choices"][0]["message"]["content"]
+                
+                # DEBUG: Print raw content
+                print(f"[DEBUG] AI Raw Response ({model}): {content}")
+
+                # Clean Markdown
+                if content.startswith("```"):
+                    content = content.strip("`")
+                    if content.startswith("json"):
+                        content = content[4:]
+                    content = content.strip()
+
+                return json.loads(content)
+
+            except Exception as e:
+                print(f"[WARN] Failed with {model}: {e}")
+                last_error = e
+                continue # Try next model
+        
+        # If all failed
+        raise last_error
 
 
 class SafetyValidator:

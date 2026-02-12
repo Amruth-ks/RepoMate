@@ -2,8 +2,17 @@ from .multilingual_processor import MultilingualProcessor
 from .ai_git_planner import AIGitPlanner
 from .git_command_builder import GitCommandBuilder
 from .safety_validator import SafetyValidator
+import os
+from dotenv import load_dotenv
 
-API_KEY = "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"
+# Load environment variables
+load_dotenv()
+
+API_KEY = os.getenv("OPENAI_API_KEY")
+
+if not API_KEY:
+    print("❌ ERROR: OPENAI_API_KEY not found in .env file.")
+    print("Please create a .env file with OPENAI_API_KEY=sk-...")
 
 processor = MultilingualProcessor()
 planner = AIGitPlanner(API_KEY)
