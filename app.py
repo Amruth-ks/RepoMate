@@ -8,115 +8,173 @@ import speech_recognition as sr
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, 
     QTextEdit, QListWidget, QListWidgetItem, QLineEdit, QScrollArea, QFrame,
-    QGridLayout, QGraphicsDropShadowEffect, QSizePolicy, QPlainTextEdit, QComboBox
+    QGridLayout, QGraphicsDropShadowEffect, QSizePolicy, QPlainTextEdit, QComboBox,
+    QStackedWidget, QInputDialog, QFileDialog
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize
-from PyQt5.QtGui import QColor, QFont, QIcon, QPalette
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize, QPropertyAnimation, QEasingCurve
+from PyQt5.QtGui import QColor, QFont, QIcon, QPalette, QLinearGradient, QBrush, QPainter, QPen
 
-from git_assist.main import processor, planner, builder, validator
-from git_assist.git_manager import GitManager
+# Local imports
+try:
+    from git_assist.main import processor, planner, builder, validator
+    from git_assist.git_manager import GitManager
+except ImportError:
+    # Fallback for testing environment if needed
+    pass
 
-# ================== STYLES ==================
-STYLESHEET = """
-QWidget {
-    background-color: #1e1e1e;
-    color: #e0e0e0;
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 14px;
-}
-/* Panels (Cards) */
-QFrame#Card {
-    background-color: #2d2d2d;
-    border-radius: 12px;
-    border: 1px solid #3d3d3d;
-}
-QFrame#Card:hover {
-    border: 1px solid #4d4d4d;
-}
+# ================== THEMES & STYLES ==================
 
-/* Header */
-QLabel#Title {
-    font-size: 24px;
-    font-weight: bold;
-    color: #ffffff;
-}
-QLabel#Subtitle {
-    font-size: 14px;
-    color: #aaaaaa;
-}
-
-/* Buttons */
-QPushButton {
-    background-color: #3d3d3d;
-    border: none;
-    border-radius: 6px;
-    padding: 8px 16px;
-    color: white;
-}
-QPushButton:hover {
-    background-color: #4d4d4d;
-}
-QPushButton#PrimaryBtn {
-    background-color: #007acc;
-}
-QPushButton#PrimaryBtn:hover {
-    background-color: #008ae6;
-}
-QPushButton#ExecuteBtn {
-    background-color: #28a745;
-    font-weight: bold;
-}
-QPushButton#ExecuteBtn:hover {
-    background-color: #34ce57;
+THEMES = {
+    "dark": {
+        "bg": "#0b0f1a",
+        "surface": "rgba(20, 26, 42, 180)",
+        "surface_hover": "rgba(30, 38, 58, 200)",
+        "card_bg": "rgba(22, 28, 48, 200)",
+        "border": "#2a344a",
+        "text_primary": "#ffffff",
+        "text_secondary": "#a0aec0",
+        "accent": "#00d2ff",
+        "accent_glow": "rgba(0, 210, 255, 60)",
+        "success": "#48bb78",
+        "error": "#f56565",
+        "sidebar_bg": "#121826",
+        "input_bg": "rgba(10, 15, 30, 200)",
+        "glow": "0px 0px 15px rgba(0, 210, 255, 0.3)"
+    },
+    "light": {
+        "bg": "#f7fafc",
+        "surface": "rgba(255, 255, 255, 180)",
+        "surface_hover": "rgba(245, 247, 250, 200)",
+        "card_bg": "rgba(255, 255, 255, 220)",
+        "border": "#e2e8f0",
+        "text_primary": "#2d3748",
+        "text_secondary": "#718096",
+        "accent": "#3182ce",
+        "accent_glow": "rgba(49, 130, 206, 40)",
+        "success": "#38a169",
+        "error": "#e53e3e",
+        "sidebar_bg": "#fdfdfd",
+        "input_bg": "rgba(255, 255, 255, 200)",
+        "glow": "0px 2px 10px rgba(0, 0, 0, 0.05)"
+    }
 }
 
-/* Inputs */
-QLineEdit, QTextEdit, QPlainTextEdit {
-    background-color: #1e1e1e;
-    border: 1px solid #3d3d3d;
-    border-radius: 6px;
-    padding: 8px;
-    color: white;
-}
-QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
-    border: 1px solid #007acc;
-}
+def get_stylesheet(theme_name="dark"):
+    t = THEMES[theme_name]
+    return f"""
+    QWidget {{
+        background-color: transparent;
+        color: {t['text_primary']};
+        font-family: 'Segoe UI', 'Inter', sans-serif;
+        font-size: 14px;
+    }}
+    
+    #MainWindow {{
+        background-color: {t['bg']};
+    }}
+    
+    #Sidebar {{
+        background-color: {t['sidebar_bg']};
+        border-right: 1px solid {t['border']};
+    }}
+    
+    #HeaderBar {{
+        background-color: {t['surface']};
+        border-bottom: 1px solid {t['border']};
+    }}
 
-/* List */
-QListWidget {
-    background-color: transparent;
-    border: none;
-}
-QListWidget::item {
-    padding: 8px;
-    border-bottom: 1px solid #3d3d3d;
-}
+    QFrame#GlassPanel {{
+        background-color: {t['card_bg']};
+        border: 1px solid {t['border']};
+        border-radius: 16px;
+    }}
+    
+    QLabel#Title {{
+        font-size: 20px;
+        font-weight: 700;
+        color: {t['text_primary']};
+        letter-spacing: -0.5px;
+    }}
+    
+    QLabel#SectionLabel {{
+        font-size: 11px;
+        font-weight: 700;
+        color: {t['accent']};
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        margin-bottom: 4px;
+    }}
 
-/* Dropdown (Combo) */
-QComboBox {
-    background-color: #2d2d2d;
-    border: 1px solid #3d3d3d;
-    border-radius: 6px;
-    padding: 6px;
-    padding-left: 10px;
-    color: #e0e0e0;
-    font-size: 13px;
-}
-QComboBox::drop-down {
-    subcontrol-origin: padding;
-    subcontrol-position: top right;
-    width: 20px;
-    border-left-width: 0px; 
-    border-top-right-radius: 6px;
-    border-bottom-right-radius: 6px;
-}
-QComboBox QAbstractItemView {
-    background-color: #2d2d2d;
-    selection-background-color: #007acc;
-    border: 1px solid #3d3d3d;
-    color: #e0e0e0;
-}
-"""
+    /* Buttons */
+    QPushButton {{
+        background-color: {t['surface']};
+        border: 1px solid {t['border']};
+        border-radius: 10px;
+        padding: 8px 16px;
+        font-weight: 500;
+        color: {t['text_primary']};
+    }}
+    QPushButton:hover {{
+        background-color: {t['surface_hover']};
+        border: 1px solid {t['accent']};
+    }}
+    
+    QPushButton#PrimaryBtn {{
+        background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 {t['accent']}, stop:1 #0080ff);
+        color: #ffffff;
+        border: none;
+        font-weight: 700;
+        padding: 10px 20px;
+    }}
+    QPushButton#PrimaryBtn:hover {{
+        background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 #33daff, stop:1 #33aaff);
+    }}
+    
+    QPushButton#NavBtn {{
+        text-align: left;
+        padding: 12px 20px;
+        border: none;
+        border-radius: 12px;
+        color: {t['text_secondary']};
+        margin: 2px 0px;
+    }}
+    QPushButton#NavBtn:hover {{
+        background-color: {t['surface_hover']};
+        color: {t['text_primary']};
+    }}
+    QPushButton#NavBtn[active="true"] {{
+        background-color: {t['accent_glow']};
+        color: {t['accent']};
+        font-weight: 700;
+    }}
+
+    /* Inputs */
+    QLineEdit, QTextEdit, QPlainTextEdit, QComboBox {{
+        background-color: {t['input_bg']};
+        border: 1px solid {t['border']};
+        border-radius: 10px;
+        padding: 10px;
+        color: {t['text_primary']};
+    }}
+    QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{
+        border: 1px solid {t['accent']};
+    }}
+
+    /* Scrollbar Styling */
+    QScrollBar:vertical {{
+        background: transparent;
+        width: 8px;
+        margin: 0;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {t['border']};
+        border-radius: 4px;
+        min-height: 20px;
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+        height: 0;
+    }}
+    """
 
 # ================== AUDIO THREAD ==================
 class AudioThread(QThread):
@@ -127,7 +185,7 @@ class AudioThread(QThread):
         self.running = False
         self.frames = []
         self.device_index = device_index
-        self.samplerate = 16000 # fixed sample rate
+        self.samplerate = 16000
 
     def callback(self, indata, frames, time, status):
         if self.running:
@@ -136,90 +194,34 @@ class AudioThread(QThread):
     def run(self):
         self.running = True
         self.frames = []
-
         try:
-            with sd.InputStream(
-                device=self.device_index,
-                samplerate=self.samplerate,
-                channels=1,
-                dtype="int16",
-                callback=self.callback
-            ):
+            with sd.InputStream(device=self.device_index, samplerate=self.samplerate, 
+                                channels=1, dtype="int16", callback=self.callback):
                 while self.running:
                     sd.sleep(50)
         except Exception as e:
-             self.finished.emit(f"Error: {str(e)}")
-             return
+            self.finished.emit(f"Error: {e}")
+            return
 
-        # PROCESS AUDIO (Now in background thread)
         if not self.frames:
             self.finished.emit("")
             return
 
-        # Concatenate
-        raw_audio = np.concatenate(self.frames, axis=0)
-        
-        # --- NORMALIZE (Maximize Volume) ---
-        # Convert to float
-        audio_float = raw_audio.astype(np.float32)
-        
-        # Find peak
-        peak = np.abs(audio_float).max()
-        print(f"[DEBUG] Raw Peak: {peak}")
-        
-        if peak > 0:
-            target_peak = 25000.0
-            scale_factor = target_peak / peak
-            scale_factor = min(scale_factor, 50.0) 
-            
-            audio_float *= scale_factor
-            print(f"[DEBUG] Applied Gain: {scale_factor:.2f}x")
-            
-        # Clip and convert back
-        audio_float = np.clip(audio_float, -32768, 32767)
-        audio = audio_float.astype(np.int16)
-
-        # DEBUG: Log final info
-        vol = np.abs(audio).mean()
-        print(f"[DEBUG] Final Mean Volume: {vol}")
-        
-        # Save to WAV for debugging
-        try:
-            with wave.open("debug_audio.wav", "wb") as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2) # 16-bit
-                wf.setframerate(16000)
-                wf.writeframes(audio.tobytes())
-            print("[DEBUG] Saved debug_audio.wav")
-            # Emit debug info first (optional, but might be safer to just emit one final result or use a separate signal)
-            # For simplicity, we'll rely on prints or append to final text if really needed, 
-            # but emitting multiple times on 'finished' might confuse the slot.
-            # Let's just print for now, or emit a special debug signal if we had one.
-        except Exception as e:
-            print(f"[WARN] Could not save wav: {e}")
-
-        if vol < 50: 
-             # Just print to console to avoid cluttering UI with non-final messages
-             print(f"[DEBUG] Audio quiet (Vol: {vol:.2f}), trying anyway...")
-
+        audio = np.concatenate(self.frames, axis=0)
         recognizer = sr.Recognizer()
-        audio_data = sr.AudioData(audio.tobytes(), 16000, 2)
-
+        audio_data = sr.AudioData(audio.tobytes(), self.samplerate, 2)
         try:
             text = recognizer.recognize_google(audio_data)
             self.finished.emit(text)
-        except sr.UnknownValueError:
-            self.finished.emit(f"[DEBUG] Audio captured (Vol: {vol:.2f}) but not understood.")
-        except Exception as e:
-            self.finished.emit(f"Error: {str(e)}")
+        except:
+            self.finished.emit("")
 
     def stop(self):
         self.running = False
 
 # ================== WORKER THREADS ==================
-
 class AIWorker(QThread):
-    finished = pyqtSignal(object, list) # plan (dict), commands (list)
+    finished = pyqtSignal(object, list)
     error = pyqtSignal(str)
     
     def __init__(self, text):
@@ -228,22 +230,14 @@ class AIWorker(QThread):
 
     def run(self):
         try:
-             # 1. Normalize
-            norm_text, lang = processor.normalize(self.text)
-            
-            # 2. Plan
+            norm_text, _ = processor.normalize(self.text)
             plan = planner.generate_plan(norm_text)
-            
-            # 3. Validate
             safe, msg = validator.validate(plan)
             if not safe:
                 self.error.emit(f"Unsafe Plan: {msg}")
                 return
-
-            # 4. Build
             commands = builder.build(plan)
             self.finished.emit(plan, commands)
-            
         except Exception as e:
             self.error.emit(str(e))
 
@@ -257,40 +251,51 @@ class CommandWorker(QThread):
         self.commands = commands
 
     def run(self):
-        self.progress.emit("[EXEC] Worker started...")
         try:
-            # We iterate here to provide real-time updates if we refactor execute_commands later
-            # For now, we assume execute_commands runs them all and returns results
-            # To be non-blocking, this whole method is already in a thread, so it's fine.
             results = self.git.execute_commands(self.commands)
             for res in results:
                 self.progress.emit(res)
         except Exception as e:
-            self.progress.emit(f"[ERROR] Execution failed: {e}")
+            self.progress.emit(f"[ERROR] {e}")
         finally:
             self.finished.emit()
 
 # ================== CUSTOM WIDGETS ==================
 
-class StatusCard(QFrame):
-    def __init__(self, title, icon_char):
-        super().__init__()
-        self.setObjectName("Card")
-        self.setStyleSheet("background-color: #252526;")
+class GlassPanel(QFrame):
+    def __init__(self, parent=None):
+        QFrame.__init__(self, parent)
+        self.setObjectName("GlassPanel")
+        self.shadow = QGraphicsDropShadowEffect(self)
+        self.shadow.setBlurRadius(20)
+        self.shadow.setXOffset(0)
+        self.shadow.setYOffset(0)
+        self.shadow.setColor(QColor(THEMES["dark"]['accent_glow']))
+        self.setGraphicsEffect(self.shadow)
         
+    def update_glow(self, theme_name):
+        t = THEMES[theme_name]
+        color = QColor(t['accent_glow']) if theme_name == "dark" else QColor(0, 0, 0, 20)
+        self.shadow.setColor(color)
+
+class StatusCard(GlassPanel):
+    def __init__(self, title, icon_char):
+        GlassPanel.__init__(self)
+        self.setMinimumHeight(100)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
         
         self.lbl_icon = QLabel(icon_char)
         self.lbl_icon.setAlignment(Qt.AlignCenter)
-        self.lbl_icon.setStyleSheet("font-size: 24px; color: #aaaaaa;")
+        self.lbl_icon.setStyleSheet("font-size: 24px;")
         
         self.lbl_title = QLabel(title)
         self.lbl_title.setAlignment(Qt.AlignCenter)
-        self.lbl_title.setStyleSheet("font-weight: bold; color: #cccccc;")
+        self.lbl_title.setObjectName("SectionLabel")
         
         self.lbl_value = QLabel("...")
         self.lbl_value.setAlignment(Qt.AlignCenter)
-        self.lbl_value.setStyleSheet("font-size: 12px; color: #888888;")
+        self.lbl_value.setStyleSheet("font-size: 13px;")
         
         layout.addWidget(self.lbl_icon)
         layout.addWidget(self.lbl_title)
@@ -298,336 +303,374 @@ class StatusCard(QFrame):
         
     def set_status(self, is_good, text):
         self.lbl_value.setText(text)
-        if is_good:
-            self.lbl_icon.setStyleSheet("font-size: 24px; color: #28a745;") # Green
-        else:
-            self.lbl_icon.setStyleSheet("font-size: 24px; color: #dc3545;") # Red or Orange
+        t = THEMES["dark"]
+        color = t['success'] if is_good else t['text_secondary']
+        self.lbl_value.setStyleSheet(f"color: {color};")
+
+class WaveformWidget(QWidget):
+    def __init__(self, main_app, parent=None):
+        QWidget.__init__(self, parent)
+        self.main = main_app
+        self.setMinimumHeight(40)
+        self.bars = 30
+        self.active = False
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update)
+        self.timer.start(50)
+        self.amplitudes = [2] * self.bars
+
+    def set_active(self, active):
+        self.active = active
+        if not active: self.amplitudes = [2] * self.bars
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        t = THEMES[self.main.current_theme]
+        color = QColor(t['accent'])
+        w, h = self.width(), self.height()
+        bar_w = w / self.bars - 4
+        for i in range(self.bars):
+            if self.active:
+                import random
+                self.amplitudes[i] = random.randint(5, h - 10)
+            x = i * (bar_w + 4)
+            bar_h = self.amplitudes[i]
+            y = (h - bar_h) / 2
+            painter.setBrush(QBrush(color))
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(int(x), int(y), int(bar_w), int(bar_h), 2, 2)
+
+class NavItem(QPushButton):
+    def __init__(self, text, icon_char, parent=None):
+        QPushButton.__init__(self, parent)
+        self.setObjectName("NavBtn")
+        self.setCheckable(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMinimumHeight(50)
+        self.setText(f"{icon_char}   {text}")
+        self.nav_name = text
+
+class StatusPill(QLabel):
+    def __init__(self, text, active=True, parent=None):
+        super().__init__(text, parent)
+        self.set_state(active)
+        self.setFixedSize(130, 28)
+        self.setAlignment(Qt.AlignCenter)
+
+    def set_state(self, active):
+        t = THEMES["dark"]
+        color = t['success'] if active else t['error']
+        bg = f"rgba({QColor(color).red()}, {QColor(color).green()}, {QColor(color).blue()}, 30)"
+        self.setStyleSheet(f"background-color: {bg}; color: {color}; border: 1px solid {color}; border-radius: 14px; font-size: 11px; font-weight: bold;")
+
+class ModernHeader(QFrame):
+    def __init__(self, main_app):
+        super().__init__()
+        self.setObjectName("HeaderBar")
+        self.setFixedHeight(70)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(24, 0, 24, 0)
+        logo = QLabel("🔗")
+        logo.setStyleSheet("font-size: 24px;")
+        title = QLabel("RepoMate – AI Git Assistant")
+        title.setObjectName("Title")
+        layout.addWidget(logo)
+        layout.addWidget(title)
+        layout.addStretch()
+        self.btn_theme = QPushButton("☀️" if main_app.current_theme == "dark" else "🌙")
+        self.btn_theme.setFixedSize(40, 40)
+        self.btn_theme.clicked.connect(main_app.toggle_theme)
+        layout.addWidget(self.btn_theme)
+        btn_sett = QPushButton("⚙️")
+        btn_sett.setFixedSize(40, 40)
+        layout.addWidget(btn_sett)
+
+class ModernSidebar(QFrame):
+    def __init__(self, main_app):
+        super().__init__()
+        self.setObjectName("Sidebar")
+        self.setFixedWidth(240)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 30, 15, 30)
+        layout.setSpacing(8)
+        self.nav_items = []
+        nav_config = [("Dashboard", "📊"), ("Repositories", "📂"), ("Commit", "📝"), ("Branches", "⇌"), ("History", "↺"), ("Settings", "⚙️")]
+        for text, icon in nav_config:
+            btn = NavItem(text, icon)
+            btn.clicked.connect(main_app.on_nav_clicked)
+            layout.addWidget(btn)
+            self.nav_items.append(btn)
+        layout.addStretch()
+        self.pill_git = StatusPill("No Repository", False)
+        layout.addWidget(self.pill_git)
 
 class FileRowWidget(QWidget):
     def __init__(self, filename, status_code, color):
         super().__init__()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.lbl_status = QLabel(status_code)
-        self.lbl_status.setFixedSize(30, 30)
-        self.lbl_status.setAlignment(Qt.AlignCenter)
-        self.lbl_status.setStyleSheet(f"background-color: {color}; color: black; border-radius: 4px; font-weight: bold;")
-        
-        self.lbl_name = QLabel(filename)
-        self.lbl_name.setStyleSheet("padding-left: 10px;")
-        
-        layout.addWidget(self.lbl_status)
-        layout.addWidget(self.lbl_name)
+        s = QLabel(status_code)
+        s.setFixedSize(24, 24)
+        s.setAlignment(Qt.AlignCenter)
+        s.setStyleSheet(f"background-color: {color}; color: black; border-radius: 4px; font-weight: bold;")
+        n = QLabel(filename)
+        n.setStyleSheet("padding-left: 8px;")
+        layout.addWidget(s)
+        layout.addWidget(n)
         layout.addStretch()
 
-# ================== MAIN APP ==================
+# ================== PAGES ==================
+
+class BasePage(QWidget):
+    def __init__(self, title, subtitle, main_app):
+        super().__init__()
+        self.main = main_app
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        header = QVBoxLayout()
+        t = QLabel(title); t.setObjectName("Title"); header.addWidget(t)
+        s = QLabel(subtitle); s.setStyleSheet("color: #a0aec0; font-size: 13px;"); header.addWidget(s)
+        self.layout.addLayout(header)
+        self.layout.addSpacing(20)
+        self.content_layout = QVBoxLayout()
+        self.layout.addLayout(self.content_layout)
+        self.layout.addStretch()
+
+class DashboardPage(BasePage):
+    def __init__(self, main_app):
+        super().__init__("Dashboard", "Welcome to RepoMate – AI Git Assistant", main_app)
+        panel = GlassPanel()
+        p_lay = QVBoxLayout(panel)
+        p_lay.addWidget(QLabel("Repository Path").setObjectName("SectionLabel"))
+        row = QHBoxLayout()
+        self.txt_repo_path = QLineEdit(); self.txt_repo_path.setReadOnly(True)
+        btn_br = QPushButton("Browse"); btn_br.clicked.connect(main_app.select_repo)
+        row.addWidget(self.txt_repo_path); row.addWidget(btn_br)
+        p_lay.addLayout(row)
+        self.content_layout.addWidget(panel)
+        grid = QHBoxLayout(); grid.setSpacing(24)
+        left = QVBoxLayout(); left.setSpacing(20)
+        cmd_p = GlassPanel(); cmd_lay = QVBoxLayout(cmd_p)
+        cmd_lay.addWidget(QLabel("AI Command").setObjectName("SectionLabel"))
+        self.txt_command = QTextEdit(); self.txt_command.setPlaceholderText("Enter command..."); self.txt_command.setFixedHeight(80)
+        cmd_lay.addWidget(self.txt_command)
+        ctrl = QHBoxLayout()
+        self.btn_mic = QPushButton("🎤"); self.btn_mic.setFixedSize(40, 40); self.btn_mic.clicked.connect(main_app.toggle_recording)
+        self.btn_plan = QPushButton("Generate Plan"); self.btn_plan.setObjectName("PrimaryBtn"); self.btn_plan.clicked.connect(main_app.plan_action)
+        ctrl.addWidget(self.btn_mic); ctrl.addWidget(self.btn_plan)
+        cmd_lay.addLayout(ctrl)
+        left.addWidget(cmd_p)
+        self.waveform = WaveformWidget(main_app); self.waveform.setVisible(False); left.addWidget(self.waveform)
+        self.plan_card = GlassPanel(); self.plan_card.setVisible(False); plan_lay = QVBoxLayout(self.plan_card)
+        plan_lay.addWidget(QLabel("Suggested Plan").setObjectName("SectionLabel"))
+        self.txt_plan_preview = QPlainTextEdit(); self.txt_plan_preview.setReadOnly(True); self.txt_plan_preview.setStyleSheet("font-family: monospace;")
+        plan_lay.addWidget(self.txt_plan_preview)
+        self.btn_confirm = QPushButton("Confirm & Execute"); self.btn_confirm.setObjectName("PrimaryBtn"); self.btn_confirm.clicked.connect(main_app.execute_plan)
+        plan_lay.addWidget(self.btn_confirm)
+        left.addWidget(self.plan_card)
+        self.commit_assist = GlassPanel(); self.commit_assist.setVisible(False); ca_lay = QVBoxLayout(self.commit_assist)
+        ca_lay.addWidget(QLabel("Commit Message").setObjectName("SectionLabel"))
+        c_row = QHBoxLayout(); self.txt_commit_msg = QLineEdit(); btn_ai = QPushButton("AI Gen"); btn_ai.clicked.connect(main_app.generate_commit_ai)
+        c_row.addWidget(self.txt_commit_msg); c_row.addWidget(btn_ai)
+        ca_lay.addLayout(c_row); left.addWidget(self.commit_assist); left.addStretch()
+        right = QVBoxLayout(); right.setSpacing(20)
+        out_p = GlassPanel(); out_lay = QVBoxLayout(out_p); out_lay.addWidget(QLabel("Git Output").setObjectName("SectionLabel"))
+        self.git_output = QListWidget(); out_lay.addWidget(self.git_output); right.addWidget(out_p)
+        st_p = GlassPanel(); st_lay = QVBoxLayout(st_p); st_lay.addWidget(QLabel("Status").setObjectName("SectionLabel"))
+        self.card_branch = StatusCard("Branch", "⇌"); self.card_status = StatusCard("Changes", "●"); self.card_last = StatusCard("Last Commit", "🕒")
+        st_lay.addWidget(self.card_branch); st_lay.addWidget(self.card_status); st_lay.addWidget(self.card_last); right.addWidget(st_p); right.addStretch()
+        grid.addLayout(left, 3); grid.addLayout(right, 2); self.content_layout.addLayout(grid)
+
+class RepositoriesPage(BasePage):
+    def __init__(self, main_app):
+        super().__init__("Repositories", "Manage workspace", main_app)
+        p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Active Repo").setObjectName("SectionLabel"))
+        self.lbl_current = QLabel("None"); self.lbl_current.setStyleSheet("font-size: 16px; font-weight: bold;"); l.addWidget(self.lbl_current)
+        b = QPushButton("Select Folder"); b.setObjectName("PrimaryBtn"); b.clicked.connect(main_app.select_repo); l.addWidget(b)
+        self.content_layout.addWidget(p); self.content_layout.addStretch()
+
+class CommitPage(BasePage):
+    def __init__(self, main_app):
+        super().__init__("Commit", "Review and finalize", main_app)
+        split = QHBoxLayout(); s_p = GlassPanel(); s_l = QVBoxLayout(s_p); s_l.addWidget(QLabel("Pending Files").setObjectName("SectionLabel"))
+        self.file_list = QListWidget(); s_l.addWidget(self.file_list)
+        b_s = QPushButton("Stage All"); b_s.clicked.connect(main_app.git_stage_all); s_l.addWidget(b_s); split.addWidget(s_p)
+        c_p = GlassPanel(); c_l = QVBoxLayout(c_p); c_l.addWidget(QLabel("Message").setObjectName("SectionLabel"))
+        self.txt_msg = QTextEdit(); c_l.addWidget(self.txt_msg)
+        b_c = QPushButton("Commit"); b_c.setObjectName("PrimaryBtn"); b_c.clicked.connect(self.commit_manual); c_l.addWidget(b_c); split.addWidget(c_p)
+        self.content_layout.addLayout(split)
+    def commit_manual(self):
+        m = self.txt_msg.toPlainText()
+        if m: self.main.git_commit(m); self.txt_msg.clear()
+
+class BranchesPage(BasePage):
+    def __init__(self, main_app):
+        super().__init__("Branches", "Local branch management", main_app)
+        p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Branches").setObjectName("SectionLabel"))
+        self.branch_list = QListWidget(); l.addWidget(self.branch_list)
+        b = QPushButton("New Branch"); b.setObjectName("PrimaryBtn"); b.clicked.connect(main_app.git_create_branch); l.addWidget(b)
+        self.content_layout.addWidget(p); self.content_layout.addStretch()
+
+class HistoryPage(BasePage):
+    def __init__(self, main_app):
+        super().__init__("History", "Commit timeline", main_app)
+        p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Recent Log").setObjectName("SectionLabel"))
+        self.history_list = QListWidget(); self.history_list.setStyleSheet("font-family: monospace;"); l.addWidget(self.history_list)
+        self.content_layout.addWidget(p)
+
+class SettingsPage(BasePage):
+    def __init__(self, main_app):
+        super().__init__("Settings", "Configure preferences", main_app)
+        p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Microphone").setObjectName("SectionLabel"))
+        self.combo_mic = QComboBox(); l.addWidget(self.combo_mic)
+        l.addSpacing(20); l.addWidget(QLabel("AI Model").setObjectName("SectionLabel"))
+        self.combo_model = QComboBox(); self.combo_model.addItems(["GPT-4", "GPT-3.5", "Local"]); l.addWidget(self.combo_model)
+        self.content_layout.addWidget(p); self.content_layout.addStretch()
+
+# ================== MAIN APP CLASS ==================
 
 class GitEaseApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("GitEase - AI Version Control")
-        self.resize(1000, 700)
-        self.setStyleSheet(STYLESHEET)
-        
+        self.setWindowTitle("RepoMate – AI Git Assistant")
+        self.resize(1100, 800)
         self.git = GitManager(".")
-        self.current_plan = None
-        
-        self.setup_ui()
-        
-        # Log Audio Devices
-        try:
-            devices = sd.query_devices()
-            print(f"[DEBUG] Audio Devices:\n{devices}")
-            self.log_area.append(f"[INFO] Default Device: {sd.query_devices(kind='input')['name']}")
-        except Exception as e:
-            print(f"[WARN] Could not query devices: {e}")
+        self.current_theme = "dark"
+        self.current_plan_commands = None
+        self.is_recording = False
+        self.setStyleSheet(get_stylesheet(self.current_theme))
+        l = QHBoxLayout(self); l.setContentsMargins(0, 0, 0, 0); l.setSpacing(0)
+        self.sidebar = ModernSidebar(self); l.addWidget(self.sidebar)
+        r = QWidget(); rl = QVBoxLayout(r); rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(0)
+        self.header = ModernHeader(self); rl.addWidget(self.header)
+        self.stack = QStackedWidget(); self.stack.setContentsMargins(24, 24, 24, 24)
+        self.pages = {
+            "Dashboard": DashboardPage(self), "Repositories": RepositoriesPage(self),
+            "Commit": CommitPage(self), "Branches": BranchesPage(self),
+            "History": HistoryPage(self), "Settings": SettingsPage(self)
+        }
+        for p in self.pages.values(): self.stack.addWidget(p)
+        rl.addWidget(self.stack); l.addWidget(r)
+        self.populate_mics(); self.switch_to_page("Dashboard")
+        self.sidebar.nav_items[0].setProperty("active", True)
+        self.timer = QTimer(); self.timer.timeout.connect(self.update_git_status); self.timer.start(5000); self.update_git_status()
 
-        # Poll git status
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_git_status)
-        self.timer.start(5000) # every 5s
-        self.update_git_status() # Initial call
+    def on_nav_clicked(self):
+        s = self.sender()
+        if not s: return
+        for b in self.sidebar.nav_items: b.setProperty("active", b == s); b.setStyle(b.style())
+        self.switch_to_page(s.nav_name)
 
-    def setup_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(20)
-        main_layout.setContentsMargins(20, 20, 20, 20)
+    def toggle_theme(self):
+        self.current_theme = "light" if self.current_theme == "dark" else "dark"
+        self.setStyleSheet(get_stylesheet(self.current_theme))
+        self.header.btn_theme.setText("☀️" if self.current_theme == "dark" else "🌙")
+        for p in self.pages.values():
+            for w in p.findChildren(GlassPanel): w.update_glow(self.current_theme)
 
-        # --- HEADER ---
-        header = QHBoxLayout()
-        title_box = QVBoxLayout()
-        self.title = QLabel("GitEase")
-        self.title.setObjectName("Title")
-        self.subtitle = QLabel("Version Control System (AIGVS)")
-        self.subtitle.setObjectName("Subtitle")
-        title_box.addWidget(self.title)
-        title_box.addWidget(self.subtitle)
-        
-        self.path_label = QLabel("Path: ...")
-        self.path_label.setStyleSheet("color: #888888;")
-        
-        header.addLayout(title_box)
-        header.addStretch()
-        header.addWidget(self.path_label)
-        
-        main_layout.addLayout(header)
+    def switch_to_page(self, name):
+        if name in self.pages: self.stack.setCurrentWidget(self.pages[name])
 
-        # --- BODY (Split) ---
-        body = QHBoxLayout()
-        
-        # -- LEFT PANEL (Repo Status) --
-        left_panel = QFrame()
-        left_panel.setObjectName("Card")
-        left_layout = QVBoxLayout(left_panel)
-        
-        # Repo Selector (Mock)
-        self.btn_repoload = QPushButton("Select Repository")
-        self.btn_repoload.setObjectName("PrimaryBtn")
-        left_layout.addWidget(self.btn_repoload)
-        
-        # Status Cards Grid
-        status_grid = QHBoxLayout()
-        self.card_repo = StatusCard("Repo", "📂")
-        self.card_remote = StatusCard("Remote", "☁️")
-        self.card_tree = StatusCard("Tree", "🌳")
-        status_grid.addWidget(self.card_repo)
-        status_grid.addWidget(self.card_remote)
-        status_grid.addWidget(self.card_tree)
-        left_layout.addLayout(status_grid)
-        
-        # File List
-        left_layout.addWidget(QLabel("File Status List:"))
-        self.file_list = QListWidget()
-        left_layout.addWidget(self.file_list)
-        
-        body.addWidget(left_panel, 1) # 1/3 width
-
-        # -- RIGHT PANEL (Command Center) --
-        right_panel = QFrame()
-        right_panel.setObjectName("Card")
-        right_layout = QVBoxLayout(right_panel)
-        
-        # Chat / Input
-        self.chat_area = QTextEdit()
-        self.chat_area.setReadOnly(True)
-        self.chat_area.setPlaceholderText("AI Chat History...")
-        right_layout.addWidget(self.chat_area, 2)
-        
-        # Mic Selector
-        self.combo_mic = QComboBox()
-        self.populate_mics()
-        right_layout.addWidget(self.combo_mic)
-        
-        input_box = QHBoxLayout()
-        self.txt_input = QLineEdit()
-        self.txt_input.setPlaceholderText("Type instruction (e.g., 'Sync my work')...")
-        self.btn_mic = QPushButton("🎤")
-        self.btn_mic.setFixedSize(40, 40)
-        self.btn_mic.clicked.connect(self.toggle_recording)
-        
-        input_box.addWidget(self.txt_input)
-        input_box.addWidget(self.btn_mic)
-        right_layout.addLayout(input_box)
-        
-        # Actions
-        self.btn_plan = QPushButton("Plan Action")
-        self.btn_plan.setObjectName("PrimaryBtn")
-        self.btn_plan.clicked.connect(self.plan_action)
-        right_layout.addWidget(self.btn_plan)
-        
-        right_layout.addWidget(QLabel("Planned Commands:"))
-        self.plan_preview = QPlainTextEdit()
-        self.plan_preview.setReadOnly(True)
-        self.plan_preview.setStyleSheet("font-family: Consolas; font-size: 13px;")
-        right_layout.addWidget(self.plan_preview, 2)
-        
-        self.btn_execute = QPushButton("Execute")
-        self.btn_execute.setObjectName("ExecuteBtn")
-        self.btn_execute.clicked.connect(self.execute_plan)
-        self.btn_execute.setEnabled(False)
-        right_layout.addWidget(self.btn_execute)
-
-        body.addWidget(right_panel, 1) # 1/3 width
-        
-        main_layout.addLayout(body, 3) # Body takes 3 parts height
-
-        # --- FOOTER (Logs) ---
-        footer = QFrame()
-        footer.setObjectName("Card")
-        footer.setStyleSheet("background-color: #000000;")
-        footer_layout = QVBoxLayout(footer)
-        
-        footer_layout.addWidget(QLabel("Logs & Output"))
-        self.log_area = QTextEdit()
-        self.log_area.setReadOnly(True)
-        self.log_area.setStyleSheet("background-color: transparent; border: none; font-family: Consolas;")
-        footer_layout.addWidget(self.log_area)
-        
-        main_layout.addWidget(footer, 1) # Footer takes 1 part height
-
-    # ================== LOGIC ==================
-    
-    def log(self, message):
-        self.log_area.append(message)
-        # Auto scroll
-        sb = self.log_area.verticalScrollBar()
-        sb.setValue(sb.maximum())
+    def log(self, msg):
+        self.pages["Dashboard"].git_output.addItem(msg)
+        self.pages["Dashboard"].git_output.scrollToBottom()
 
     def update_git_status(self):
-        status = self.git.get_status()
-        
-        # Update Header
-        self.path_label.setText(f"Path: {self.git.repo_path}  |  Branch: {status['current_branch']}")
-        
-        # Update Cards
-        self.card_repo.set_status(status['initialized'], "Initialized" if status['initialized'] else "No Repo")
-        self.card_remote.set_status(status['remote_connected'], "Connected" if status['remote_connected'] else "No Remote")
-        self.card_tree.set_status(status['pending_changes'] == 0, f"{status['pending_changes']} Pending")
-        
-        # Update File List (Only redraw if count changed to avoid flickering, simplistic for now)
-        # For a smooth UI, we should diff, but clearing is fine for prototype
-        self.file_list.clear()
-        for f in status['files']:
-            item = QListWidgetItem(self.file_list)
-            widget = FileRowWidget(f['name'], f['status'], f['color'])
-            item.setSizeHint(widget.sizeHint())
-            self.file_list.setItemWidget(item, widget)
+        s = self.git.get_status(); dash = self.pages["Dashboard"]
+        self.sidebar.pill_git.set_state(s['initialized'])
+        self.sidebar.pill_git.setText("Git Connected" if s['initialized'] else "No Repo")
+        dash.txt_repo_path.setText(self.git.repo_path)
+        dash.card_branch.set_status(s['initialized'], s['current_branch'])
+        dash.card_status.set_status(s['initialized'], f"{s['pending_changes']} Changes")
+        try:
+            o, _, _ = self.git.run_git(["log", "-1", "--format=%cr"])
+            dash.card_last.set_status(s['initialized'], o if o else "No commits")
+        except: dash.card_last.set_status(False, "Unknown")
+        self.pages["Repositories"].lbl_current.setText(self.git.repo_path)
+        cp = self.pages["Commit"]; cp.file_list.clear()
+        for f in s['files']:
+            it = QListWidgetItem(cp.file_list)
+            w = FileRowWidget(f['name'], f['status'], f['color'])
+            it.setSizeHint(w.sizeHint()); cp.file_list.setItemWidget(it, w)
+        bp = self.pages["Branches"]; bp.branch_list.clear()
+        for b in self.git.get_branches(): bp.branch_list.addItem(f"● {b}" + (" (Current)" if b == s['current_branch'] else ""))
+        hp = self.pages["History"]; hp.history_list.clear()
+        try:
+            for l in self.git.run_command(["log", "--oneline", "-n", "10"]).splitlines(): hp.history_list.addItem(l)
+        except: pass
 
     def populate_mics(self):
-        self.combo_mic.clear()
+        c = self.pages["Settings"].combo_mic; c.clear()
         try:
-            devices = sd.query_devices()
-            # default_input = sd.query_devices(kind='input')
-            # default_index = default_input['index'] if default_input else -1
-            
-            # User Preference: Default to index 7 if available
-            target_index = 7
-            has_target = False
-            
-            for i, dev in enumerate(devices):
-                if dev['max_input_channels'] > 0:
-                    name = dev['name']
-                    # Mark requested default
-                    if i == target_index:
-                        name += " (Preferred)"
-                        has_target = True
-                        
-                    self.combo_mic.addItem(f"{i}: {name}", i)
-                    
-                    if i == target_index:
-                         self.combo_mic.setCurrentIndex(self.combo_mic.count() - 1)
-            
-            # If target 7 wasn't found, maybe select system default or 0
-            if not has_target and self.combo_mic.count() > 0:
-                 self.combo_mic.setCurrentIndex(0)
-
-        except Exception as e:
-            self.combo_mic.addItem(f"Error listing mics: {e}")
+            for i, d in enumerate(sd.query_devices()):
+                if d['max_input_channels'] > 0: c.addItem(f"{i}: {d['name']}", i)
+        except: pass
 
     def toggle_recording(self):
-        if hasattr(self, "is_recording") and self.is_recording:
-            # STOP RECORDING
-            self.log("[INFO] processing audio...")
-            self.btn_mic.setStyleSheet("background-color: orange;") # Orange for processing
-            self.btn_mic.setEnabled(False) # Prevent double clicks
-            self.recorder.stop()
-            # self.recorder.wait() # REMOVED: Do not block GUI
-            self.is_recording = False
+        dash = self.pages["Dashboard"]
+        if self.is_recording:
+            self.log("[INFO] Processing audio..."); dash.btn_mic.setEnabled(False); dash.waveform.set_active(False); dash.waveform.setVisible(False)
+            self.recorder.stop(); self.is_recording = False
         else:
-            # START RECORDING
-            idx = self.combo_mic.currentData()
-            if idx is None:
-                idx = sd.default.device[0] # Fallback
-                
-            self.log(f"[INFO] Listening on Device {idx}... (Click again to stop)")
-            self.btn_mic.setStyleSheet("background-color: red;")
-            
-            self.recorder = AudioThread(device_index=idx)
-            self.recorder.finished.connect(self.on_recording_finished)
-            self.recorder.start()
+            idx = self.pages["Settings"].combo_mic.currentData()
+            if idx is None: idx = sd.default.device[0]
+            self.log("[INFO] Listening..."); dash.btn_mic.setStyleSheet("background-color: #f56565; color: white;")
+            dash.waveform.setVisible(True); dash.waveform.set_active(True)
+            self.recorder = AudioThread(device_index=idx); self.recorder.finished.connect(self.on_recording_finished); self.recorder.start()
             self.is_recording = True
 
     def on_recording_finished(self, text):
-        # Reset UI
-        self.btn_mic.setStyleSheet("") 
-        self.btn_mic.setEnabled(True)
-        
-        if not text:
-            self.log("[WARN] No speech detected")
-            return
-
-        if text.startswith("[DEBUG]"):
-            self.log(text)
-            return
-
-        if text.startswith("Error"):
-            self.log(f"[ERROR] {text}")
-            return
-
-        # Success case
-        self.txt_input.setText(text)
-        self.log(f"[AUDIO] Heard: {text}")
-        self.plan_action() # Auto plan on voice
+        dash = self.pages["Dashboard"]; dash.btn_mic.setEnabled(True); dash.btn_mic.setStyleSheet("")
+        if text: dash.txt_command.setPlainText(text); self.log(f"[AUDIO] {text}"); self.plan_action()
+        else: self.log("[WARN] No speech detected")
 
     def plan_action(self):
-        instruction = self.txt_input.text()
-        if not instruction:
-            self.log("[WARN] Please enter an instruction")
-            return
-            
-        self.log(f"[AI] Planning: '{instruction}'...")
-        self.chat_area.append(f"User: {instruction}")
-        self.btn_plan.setEnabled(False) # Disable while planning
-        
-        # Start AI Worker
-        self.ai_worker = AIWorker(instruction)
-        self.ai_worker.finished.connect(self.on_plan_finished)
-        self.ai_worker.error.connect(self.on_plan_error)
-        self.ai_worker.start()
+        dash = self.pages["Dashboard"]; inst = dash.txt_command.toPlainText()
+        if not inst: self.log("[WARN] Enter instruction"); return
+        self.log(f"[AI] Planning..."); dash.btn_plan.setEnabled(False)
+        self.ai = AIWorker(inst); self.ai.finished.connect(self.on_plan_finished); self.ai.error.connect(self.on_plan_error); self.ai.start()
 
-    def on_plan_finished(self, plan, commands):
-        self.btn_plan.setEnabled(True)
-        self.current_plan = plan
-        self.current_plan_commands = commands
-        
-        self.chat_area.append(f"AI: I have created a plan.")
-        self.plan_preview.setPlainText("\n".join(commands))
-        self.btn_execute.setEnabled(True)
-        self.log(f"[SUCCESS] Plan generated with {len(commands)} commands.")
+    def on_plan_finished(self, plan, cmds):
+        dash = self.pages["Dashboard"]; dash.btn_plan.setEnabled(True); self.current_plan_commands = cmds
+        dash.txt_plan_preview.setPlainText("\n".join(cmds)); dash.plan_card.setVisible(True); dash.commit_assist.setVisible(True)
+        if plan and 'commit_message' in plan: dash.txt_commit_msg.setText(plan['commit_message'])
+        self.log(f"[SUCCESS] Plan ready ({len(cmds)} steps)")
 
-    def on_plan_error(self, msg):
-        self.btn_plan.setEnabled(True)
-        self.log(f"[ERROR] Planning failed: {msg}")
-        self.chat_area.append(f"AI: Error: {msg}")
+    def on_plan_error(self, m): self.pages["Dashboard"].btn_plan.setEnabled(True); self.log(f"[ERROR] {m}")
 
     def execute_plan(self):
-        if not self.current_plan_commands:
-            return
-            
-        self.log("[EXEC] Starting background execution...")
-        self.btn_execute.setEnabled(False)
-        
-        # Start Command Worker
-        self.cmd_worker = CommandWorker(self.git, self.current_plan_commands)
-        self.cmd_worker.progress.connect(self.log)
-        self.cmd_worker.finished.connect(self.on_execute_finished)
-        self.cmd_worker.start()
+        if not self.current_plan_commands: self.log("[WARN] No plan"); return
+        dash = self.pages["Dashboard"]; dash.btn_confirm.setEnabled(False); dash.btn_confirm.setText("Executing...")
+        self.worker = CommandWorker(self.git, self.current_plan_commands); self.worker.progress.connect(self.log)
+        self.worker.finished.connect(self.on_exec_finished); self.worker.start()
 
-    def on_execute_finished(self):
-        self.log("[DONE] Execution finished.")
-        self.update_git_status() # Refresh UI
-        self.txt_input.clear()
-        self.plan_preview.clear()
-        self.current_plan_commands = None
-        # self.btn_execute.setEnabled(True) # Keep disabled until new plan
+    def on_exec_finished(self):
+        dash = self.pages["Dashboard"]; dash.btn_confirm.setEnabled(True); dash.btn_confirm.setText("Confirm & Execute")
+        dash.plan_card.setVisible(False); dash.commit_assist.setVisible(False); self.update_git_status(); self.log("[SUCCESS] Done")
+
+    def generate_commit_ai(self):
+        dash = self.pages["Dashboard"]; inst = dash.txt_command.toPlainText() or "current changes"
+        self.log("[AI] Generating commit message..."); dash.txt_commit_msg.setPlaceholderText("Generating...")
+        def run():
+            try:
+                p = planner.generate_plan(f"Suggest commit message: {inst}")
+                msg = p.get('commit_message', "Update")
+                dash.txt_commit_msg.setText(msg); self.log(f"[AI] Suggested: {msg}")
+            except Exception as e: self.log(f"[ERROR] {e}")
+        threading.Thread(target=run, daemon=True).start()
+
+    def select_repo(self):
+        p = QFileDialog.getExistingDirectory(self, "Select Repo")
+        if p: self.git = GitManager(p); self.update_git_status(); self.log(f"[INFO] Path: {p}")
+
+    def git_stage_all(self): self.git.run_command(["add", "."]); self.update_git_status()
+    def git_commit(self, m): self.git.run_command(["commit", "-m", m]); self.update_git_status(); self.log(f"[SUCCESS] Committed")
+    def git_create_branch(self):
+        n, ok = QInputDialog.getText(self, "New Branch", "Name:")
+        if ok and n: self.git.run_command(["checkout", "-b", n]); self.update_git_status()
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    
-    # Set Fusion Theme for consistent look across platforms
-    app.setStyle("Fusion")
-    
-    window = GitEaseApp()
-    window.show()
-    sys.exit(app.exec_())
+    app = QApplication(sys.argv); app.setStyle("Fusion")
+    window = GitEaseApp(); window.show(); sys.exit(app.exec_())

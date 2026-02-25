@@ -71,9 +71,9 @@ class GitManager:
             status_data["pending_changes"] = len(lines)
             
             for line in lines:
-                if len(line) < 4: continue
-                code = line[:2].strip()
-                filename = line[3:]
+                if not isinstance(line, str) or len(line) < 4: continue
+                code = str(line[:2]).strip()
+                filename = str(line[3:])
                 
                 # Determine simple status for UI
                 # M = Modified (Yellow), A/?? = Added (Green), D = Deleted (Red)
@@ -93,6 +93,17 @@ class GitManager:
         
         status_data["files"] = files
         return status_data
+
+    def get_branches(self):
+        """Returns a list of local branch names."""
+        out, _, _ = self.run_git(["branch", "--format=%(refname:short)"])
+        if out:
+            return out.split("\n")
+        return []
+
+    def run_command(self, args):
+        """Standard runner for UI callbacks."""
+        return self.run_git(args)[0]
 
     def execute_commands(self, commands):
         """Executes a list of command strings."""
