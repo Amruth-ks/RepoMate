@@ -9,10 +9,10 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, 
     QTextEdit, QListWidget, QListWidgetItem, QLineEdit, QScrollArea, QFrame,
     QGridLayout, QGraphicsDropShadowEffect, QSizePolicy, QPlainTextEdit, QComboBox,
-    QStackedWidget, QInputDialog, QFileDialog
+    QStackedWidget, QInputDialog, QFileDialog, QStyle, QStyleOptionButton
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize, QPropertyAnimation, QEasingCurve
-from PyQt5.QtGui import QColor, QFont, QIcon, QPalette, QLinearGradient, QBrush, QPainter, QPen
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize, QPropertyAnimation, QEasingCurve, pyqtSlot, pyqtProperty, QPoint
+from PyQt5.QtGui import QColor, QFont, QIcon, QPalette, QLinearGradient, QBrush, QPainter, QPen, QRadialGradient, QPainterPath, QPixmap
 
 # Local imports
 try:
@@ -26,36 +26,36 @@ except ImportError:
 
 THEMES = {
     "dark": {
-        "bg": "#0b0f1a",
-        "surface": "rgba(20, 26, 42, 180)",
-        "surface_hover": "rgba(30, 38, 58, 200)",
-        "card_bg": "rgba(22, 28, 48, 200)",
-        "border": "#2a344a",
-        "text_primary": "#ffffff",
-        "text_secondary": "#a0aec0",
-        "accent": "#00d2ff",
-        "accent_glow": "rgba(0, 210, 255, 60)",
-        "success": "#48bb78",
-        "error": "#f56565",
-        "sidebar_bg": "#121826",
-        "input_bg": "rgba(10, 15, 30, 200)",
-        "glow": "0px 0px 15px rgba(0, 210, 255, 0.3)"
+        "bg": "#06080c", # Ultra dark for maximum contrast
+        "surface": "rgba(20, 30, 45, 220)",
+        "surface_hover": "rgba(40, 60, 90, 240)",
+        "card_bg": "rgba(10, 15, 25, 240)",
+        "border": "rgba(255, 255, 255, 0.15)",
+        "text_primary": "#FFFFFF", # Absolute white
+        "text_secondary": "#E2E8F0", # Bright slate for high legibility
+        "accent": "#00BAFF",
+        "accent_glow": "rgba(0, 186, 255, 0.3)",
+        "success": "#22C55E",
+        "error": "#EF4444",
+        "sidebar_bg": "#020617",
+        "input_bg": "rgba(2, 6, 23, 200)",
+        "glow": "0 8px 32px 0 rgba(0, 0, 0, 0.7)"
     },
     "light": {
-        "bg": "#f7fafc",
-        "surface": "rgba(255, 255, 255, 180)",
-        "surface_hover": "rgba(245, 247, 250, 200)",
-        "card_bg": "rgba(255, 255, 255, 220)",
-        "border": "#e2e8f0",
-        "text_primary": "#2d3748",
-        "text_secondary": "#718096",
-        "accent": "#3182ce",
-        "accent_glow": "rgba(49, 130, 206, 40)",
-        "success": "#38a169",
-        "error": "#e53e3e",
-        "sidebar_bg": "#fdfdfd",
-        "input_bg": "rgba(255, 255, 255, 200)",
-        "glow": "0px 2px 10px rgba(0, 0, 0, 0.05)"
+        "bg": "#e2e8f0", # Slightly darker slate for better card contrast
+        "surface": "#ffffff", 
+        "surface_hover": "#f1f5f9",
+        "card_bg": "#ffffff",
+        "border": "#94a3b8", # Darker border for clear separation
+        "text_primary": "#0f172a", # Deep navy
+        "text_secondary": "#334155", # High-contrast slate
+        "accent": "#0ea5e9",
+        "accent_glow": "rgba(14, 165, 233, 0.2)",
+        "success": "#15803d",
+        "error": "#b91c1c",
+        "sidebar_bg": "#f1f5f9",
+        "input_bg": "#ffffff",
+        "glow": "0 2px 10px rgba(0, 0, 0, 0.1)"
     }
 }
 
@@ -65,7 +65,7 @@ def get_stylesheet(theme_name="dark"):
     QWidget {{
         background-color: transparent;
         color: {t['text_primary']};
-        font-family: 'Segoe UI', 'Inter', sans-serif;
+        font-family: 'Inter', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
         font-size: 14px;
     }}
     
@@ -86,57 +86,61 @@ def get_stylesheet(theme_name="dark"):
     QFrame#GlassPanel {{
         background-color: {t['card_bg']};
         border: 1px solid {t['border']};
-        border-radius: 16px;
+        border-radius: 20px;
     }}
     
     QLabel#Title {{
-        font-size: 20px;
-        font-weight: 700;
+        font-size: 24px;
+        font-weight: 800;
         color: {t['text_primary']};
-        letter-spacing: -0.5px;
+        letter-spacing: -1px;
     }}
     
     QLabel#SectionLabel {{
-        font-size: 11px;
-        font-weight: 700;
+        font-size: 12px;
+        font-weight: 800;
         color: {t['accent']};
         text-transform: uppercase;
-        letter-spacing: 1.2px;
-        margin-bottom: 4px;
+        letter-spacing: 2px;
+        margin-bottom: 8px;
     }}
 
-    /* Buttons */
+    /* Premium Buttons */
     QPushButton {{
         background-color: {t['surface']};
         border: 1px solid {t['border']};
-        border-radius: 10px;
-        padding: 8px 16px;
-        font-weight: 500;
+        border-radius: 12px;
+        padding: 10px 20px;
+        font-weight: 600;
         color: {t['text_primary']};
     }}
     QPushButton:hover {{
         background-color: {t['surface_hover']};
         border: 1px solid {t['accent']};
     }}
+    QPushButton:pressed {{
+        background-color: {t['accent_glow']};
+    }}
     
     QPushButton#PrimaryBtn {{
-        background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 {t['accent']}, stop:1 #0080ff);
+        background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 {t['accent']}, stop:1 #0ea5e9);
         color: #ffffff;
         border: none;
         font-weight: 700;
-        padding: 10px 20px;
+        padding: 12px 24px;
     }}
     QPushButton#PrimaryBtn:hover {{
-        background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 #33daff, stop:1 #33aaff);
+        background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #7dd3fc, stop:1 #38bdf8);
     }}
     
     QPushButton#NavBtn {{
         text-align: left;
-        padding: 12px 20px;
+        padding: 14px 24px;
         border: none;
-        border-radius: 12px;
+        border-radius: 14px;
         color: {t['text_secondary']};
-        margin: 2px 0px;
+        margin: 4px 0px;
+        font-weight: 500;
     }}
     QPushButton#NavBtn:hover {{
         background-color: {t['surface_hover']};
@@ -146,33 +150,52 @@ def get_stylesheet(theme_name="dark"):
         background-color: {t['accent_glow']};
         color: {t['accent']};
         font-weight: 700;
+        border-left: 4px solid {t['accent']};
     }}
 
-    /* Inputs */
+    /* Premium Inputs */
     QLineEdit, QTextEdit, QPlainTextEdit, QComboBox {{
         background-color: {t['input_bg']};
         border: 1px solid {t['border']};
-        border-radius: 10px;
-        padding: 10px;
+        border-radius: 12px;
+        padding: 12px;
         color: {t['text_primary']};
     }}
     QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{
-        border: 1px solid {t['accent']};
+        border: 2px solid {t['accent']};
     }}
 
     /* Scrollbar Styling */
     QScrollBar:vertical {{
         background: transparent;
         width: 8px;
-        margin: 0;
+        margin: 4px;
     }}
     QScrollBar::handle:vertical {{
         background: {t['border']};
         border-radius: 4px;
         min-height: 20px;
     }}
+    QScrollBar::handle:vertical:hover {{
+        background: {t['accent']};
+    }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         height: 0;
+    }}
+    
+    QListWidget {{
+        border-radius: 16px;
+        background-color: {t['input_bg']};
+        border: 1px solid {t['border']};
+    }}
+    QListWidget::item {{
+        padding: 10px;
+        border-radius: 8px;
+        margin: 2px 4px;
+    }}
+    QListWidget::item:selected {{
+        background-color: {t['accent_glow']};
+        color: {t['accent']};
     }}
     """
 
@@ -260,6 +283,59 @@ class CommandWorker(QThread):
         finally:
             self.finished.emit()
 
+class GenericWorker(QThread):
+    result = pyqtSignal(object)
+    error = pyqtSignal(str)
+
+    def __init__(self, func, *args, **kwargs):
+        super().__init__()
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        try:
+            res = self.func(*self.args, **self.kwargs)
+            self.result.emit(res)
+        except Exception as e:
+            self.error.emit(str(e))
+
+class GitStatusWorker(QThread):
+    status_updated = pyqtSignal(dict)
+    branches_updated = pyqtSignal(list)
+    log_updated = pyqtSignal(list)
+    error = pyqtSignal(str)
+
+    def __init__(self, git_manager):
+        super().__init__()
+        self.git = git_manager
+
+    def run(self):
+        try:
+            status = self.git.get_status()
+            
+            # Get last commit time for the status card
+            try:
+                out, _, _ = self.git.run_git(["log", "-1", "--format=%cr"])
+                status["last_commit"] = out if out else "No commits"
+            except:
+                status["last_commit"] = "Unknown"
+                
+            self.status_updated.emit(status)
+            
+            branches = self.git.get_branches()
+            self.branches_updated.emit(branches)
+            
+            # Fetch recent log
+            try:
+                log = self.git.run_command(["log", "--oneline", "-n", "10"]).splitlines()
+                self.log_updated.emit(log)
+            except:
+                self.log_updated.emit([])
+                
+        except Exception as e:
+            self.error.emit(str(e))
+
 # ================== CUSTOM WIDGETS ==================
 
 class GlassPanel(QFrame):
@@ -267,27 +343,61 @@ class GlassPanel(QFrame):
         QFrame.__init__(self, parent)
         self.setObjectName("GlassPanel")
         self.shadow = QGraphicsDropShadowEffect(self)
-        self.shadow.setBlurRadius(20)
+        self.shadow.setBlurRadius(30)
         self.shadow.setXOffset(0)
-        self.shadow.setYOffset(0)
-        self.shadow.setColor(QColor(THEMES["dark"]['accent_glow']))
+        self.shadow.setYOffset(4)
+        self.shadow.setColor(QColor(0, 0, 0, 80))
         self.setGraphicsEffect(self.shadow)
         
     def update_glow(self, theme_name):
         t = THEMES[theme_name]
-        color = QColor(t['accent_glow']) if theme_name == "dark" else QColor(0, 0, 0, 20)
+        # Multi-layered glow for premium feel
+        color = QColor(0, 0, 0, 80) if theme_name == "dark" else QColor(0, 0, 0, 30)
         self.shadow.setColor(color)
+
+class ShimmerWidget(QWidget):
+    def __init__(self, parent=None):
+        QWidget.__init__(self, parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self._pos = -1.0
+        self.anim = QPropertyAnimation(self, b"pos")
+        self.anim.setDuration(1500)
+        self.anim.setStartValue(-1.0)
+        self.anim.setEndValue(2.0)
+        self.anim.setLoopCount(-1)
+        self.anim.start()
+
+    @pyqtProperty(float)
+    def pos(self): return self._pos
+    @pos.setter
+    def pos(self, value):
+        self._pos = value
+        self.update()
+
+    def paintEvent(self, event):
+        if not self.isVisible(): return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        grad = QLinearGradient(self.width() * self._pos, 0, self.width() * (self._pos + 0.5), 0)
+        c = QColor(255, 255, 255, 0)
+        m = QColor(255, 255, 255, 40)
+        grad.setColorAt(0, c)
+        grad.setColorAt(0.5, m)
+        grad.setColorAt(1, c)
+        painter.setBrush(grad)
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(self.rect(), 12, 12)
 
 class StatusCard(GlassPanel):
     def __init__(self, title, icon_char):
-        GlassPanel.__init__(self)
-        self.setMinimumHeight(100)
+        super(StatusCard, self).__init__()
+        self.setMinimumHeight(120)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setContentsMargins(20, 20, 20, 20)
         
         self.lbl_icon = QLabel(icon_char)
         self.lbl_icon.setAlignment(Qt.AlignCenter)
-        self.lbl_icon.setStyleSheet("font-size: 24px;")
+        self.lbl_icon.setStyleSheet("font-size: 28px; color: #38bdf8;")
         
         self.lbl_title = QLabel(title)
         self.lbl_title.setAlignment(Qt.AlignCenter)
@@ -295,17 +405,42 @@ class StatusCard(GlassPanel):
         
         self.lbl_value = QLabel("...")
         self.lbl_value.setAlignment(Qt.AlignCenter)
-        self.lbl_value.setStyleSheet("font-size: 13px;")
+        self.lbl_value.setStyleSheet("font-size: 15px; font-weight: 600;")
         
         layout.addWidget(self.lbl_icon)
         layout.addWidget(self.lbl_title)
         layout.addWidget(self.lbl_value)
         
+        self.shimmer = ShimmerWidget(self)
+        self.shimmer.hide()
+
+    def resizeEvent(self, event):
+        self.shimmer.setFixedSize(self.size())
+        super().resizeEvent(event)
+
     def set_status(self, is_good, text):
+        self.shimmer.hide()
+        if self.lbl_value.text() != text:
+            # Pop animation on change
+            self._pop_anim()
         self.lbl_value.setText(text)
         t = THEMES["dark"]
         color = t['success'] if is_good else t['text_secondary']
         self.lbl_value.setStyleSheet(f"color: {color};")
+
+    def _pop_anim(self):
+        self.p_anim = QPropertyAnimation(self.lbl_icon, b"geometry")
+        self.p_anim.setDuration(300)
+        curr = self.lbl_icon.geometry()
+        self.p_anim.setStartValue(curr.adjusted(-2, -2, 2, 2))
+        self.p_anim.setEndValue(curr)
+        self.p_anim.setEasingCurve(QEasingCurve.OutElastic)
+        self.p_anim.start()
+
+    def show_loading(self):
+        self.lbl_value.setText("")
+        self.shimmer.show()
+        self.shimmer.raise_()
 
 class WaveformWidget(QWidget):
     def __init__(self, main_app, parent=None):
@@ -342,21 +477,209 @@ class WaveformWidget(QWidget):
             painter.setPen(Qt.NoPen)
             painter.drawRoundedRect(int(x), int(y), int(bar_w), int(bar_h), 2, 2)
 
-class NavItem(QPushButton):
+class GradientLabel(QLabel):
+    def __init__(self, text, parent=None):
+        super(GradientLabel, self).__init__(text, parent)
+        self.setAlignment(Qt.AlignCenter)
+        self._glow = 0
+        self.anim = QPropertyAnimation(self, b"glow")
+        self.anim.setDuration(2000)
+        self.anim.setStartValue(0)
+        self.anim.setEndValue(100)
+        self.anim.setEasingCurve(QEasingCurve.InOutSine)
+        self.anim.setLoopCount(-1)
+        self.anim.start()
+
+    @pyqtProperty(int)
+    def glow(self): return self._glow
+    @glow.setter
+    def glow(self, value):
+        self._glow = value
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        grad = QLinearGradient(0, 0, self.width(), 0)
+        grad.setColorAt(0, QColor("#38bdf8")) # Light blue
+        grad.setColorAt(1, QColor("#818cf8")) # Indigo
+        
+        f = self.font()
+        f.setBold(True)
+        painter.setFont(f)
+        
+        # Draw gradient text using QPen with gradient brush
+        pen = QPen()
+        pen.setBrush(grad)
+        painter.setPen(pen)
+        
+        # Center text vertically and horizontally
+        painter.drawText(self.rect(), Qt.AlignCenter, self.text())
+
+class PremiumButton(QPushButton):
+    def __init__(self, *args, **kwargs):
+        QPushButton.__init__(self, *args, **kwargs)
+        self._scale = 1.0
+        self._flash_alpha = 0
+        self._hover_pos = QPoint(-100, -100)
+        self.anim = QPropertyAnimation(self, b"scale")
+        self.anim.setDuration(150)
+        self.anim.setEasingCurve(QEasingCurve.OutBack)
+        
+        self.flash_anim = QPropertyAnimation(self, b"flash_alpha")
+        self.flash_anim.setDuration(400)
+        self.flash_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.setMouseTracking(True)
+
+    @pyqtProperty(float)
+    def scale(self): return self._scale
+    @scale.setter
+    def scale(self, value):
+        self._scale = value
+        self.update()
+
+    @pyqtProperty(int)
+    def flash_alpha(self): return self._flash_alpha
+    @flash_alpha.setter
+    def flash_alpha(self, value):
+        self._flash_alpha = value
+        self.update()
+
+    def trigger_success(self):
+        self.flash_anim.stop()
+        self.flash_anim.setStartValue(180)
+        self.flash_anim.setEndValue(0)
+        self.flash_anim.start()
+
+    def mousePressEvent(self, event):
+        self.anim.stop()
+        self.anim.setDuration(50)
+        self.anim.setEndValue(0.95)
+        self.anim.start()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self.anim.stop()
+        self.anim.setDuration(150)
+        self.anim.setEndValue(1.05 if self.underMouse() else 1.0)
+        self.anim.start()
+        super().mouseReleaseEvent(event)
+
+    def enterEvent(self, event):
+        self.anim.stop()
+        self.anim.setStartValue(self._scale)
+        self.anim.setEndValue(1.05)
+        self.anim.start()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.anim.stop()
+        self.anim.setStartValue(self._scale)
+        self.anim.setEndValue(1.0)
+        self.anim.start()
+        self._hover_pos = QPoint(-100, -100)
+        super().leaveEvent(event)
+
+    def mouseMoveEvent(self, event):
+        self._hover_pos = event.pos()
+        self.update()
+        super().mouseMoveEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Apply scale transform BEFORE super().paintEvent
+        if self._scale != 1.0:
+            painter.translate(self.width()/2, self.height()/2)
+            painter.scale(self._scale, self._scale)
+            painter.translate(-self.width()/2, -self.height()/2)
+            
+        # Draw base button (QPushButton won't know we scaled, but painter carries transform)
+        # However, super().paintEvent creates its own painter or uses the widget's?
+        # Actually in Qt, super().paintEvent draws directly. 
+        # But we want to scale everything.
+        
+        # Proper way: Render to a temporary buffer or use a QGraphicsEffect.
+        # But for simple scale, we can use the transform on the shared painter IF it's shared.
+        # In PyQt QPushButton, super().paintEvent(event) ignores the transform we just did!
+        
+        # Let's draw the background and content manually for perfect control
+        opt = QStyleOptionButton()
+        self.initStyleOption(opt)
+        
+        if self._scale != 1.0:
+            painter.save()
+            painter.translate(self.width()/2, self.height()/2)
+            painter.scale(self._scale, self._scale)
+            painter.translate(-self.width()/2, -self.height()/2)
+            self.style().drawControl(QStyle.CE_PushButton, opt, painter, self)
+            painter.restore()
+        else:
+            self.style().drawControl(QStyle.CE_PushButton, opt, painter, self)
+        
+        # Draw spotlight effect ON TOP
+        if self.underMouse():
+            grad = QRadialGradient(self._hover_pos, 90)
+            grad.setColorAt(0, QColor(255, 255, 255, 50)) # More visible
+            grad.setColorAt(1, Qt.transparent)
+            painter.setBrush(grad)
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(self.rect(), 12, 12)
+
+        # Draw success flash
+        if self._flash_alpha > 0:
+            painter.setBrush(QColor(72, 187, 120, self._flash_alpha)) # Green flash
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(self.rect(), 12, 12)
+
+class PulsingButton(PremiumButton):
+    def __init__(self, *args, **kwargs):
+        PremiumButton.__init__(self, *args, **kwargs)
+        self._glow_alpha = 0
+        self.pulse_anim = QPropertyAnimation(self, b"glow_alpha")
+        self.pulse_anim.setDuration(1200)
+        self.pulse_anim.setStartValue(0)
+        self.pulse_anim.setEndValue(80)
+        self.pulse_anim.setEasingCurve(QEasingCurve.InOutQuad)
+        self.pulse_anim.setLoopCount(-1)
+        self.pulse_anim.start()
+
+    @pyqtProperty(int)
+    def glow_alpha(self): return self._glow_alpha
+    @glow_alpha.setter
+    def glow_alpha(self, value):
+        self._glow_alpha = value
+        self.update()
+
+    def paintEvent(self, event):
+        if self.objectName() == "PrimaryBtn" and not self.underMouse():
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.Antialiasing)
+            t = THEMES["dark"]
+            color = QColor(t['accent'])
+            color.setAlpha(self._glow_alpha)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(color, 2))
+            painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 12, 12)
+        super().paintEvent(event)
+
+class NavItem(PremiumButton):
     def __init__(self, text, icon_char, parent=None):
-        QPushButton.__init__(self, parent)
+        super(NavItem, self).__init__(parent)
         self.setObjectName("NavBtn")
         self.setCheckable(True)
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(50)
+        self.setMinimumHeight(56)
         self.setText(f"{icon_char}   {text}")
         self.nav_name = text
 
 class StatusPill(QLabel):
     def __init__(self, text, active=True, parent=None):
-        super().__init__(text, parent)
+        QLabel.__init__(self, text, parent)
         self.set_state(active)
-        self.setFixedSize(130, 28)
+        self.setFixedSize(140, 32)
         self.setAlignment(Qt.AlignCenter)
 
     def set_state(self, active):
@@ -367,36 +690,61 @@ class StatusPill(QLabel):
 
 class ModernHeader(QFrame):
     def __init__(self, main_app):
-        super().__init__()
+        super(ModernHeader, self).__init__()
+        self.main = main_app # Store this
         self.setObjectName("HeaderBar")
         self.setFixedHeight(70)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 0, 24, 0)
-        logo = QLabel("🔗")
-        logo.setStyleSheet("font-size: 24px;")
-        title = QLabel("RepoMate – AI Git Assistant")
-        title.setObjectName("Title")
-        layout.addWidget(logo)
-        layout.addWidget(title)
+        logo_lbl = QLabel()
+        logo_pix = QPixmap("logo.png")
+        if not logo_pix.isNull():
+            logo_lbl.setPixmap(logo_pix.scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            logo_lbl.setText("󰊤")
+            logo_lbl.setStyleSheet("font-size: 28px; color: #38bdf8;")
+        
+        self.title_label = GradientLabel("REPOMATE")
+        self.title_label.setFont(QFont("Inter", 24, QFont.ExtraBold))
+        self.title_label.setFixedWidth(260)
+        
+        if logo_lbl: layout.addWidget(logo_lbl)
+        if hasattr(self, 'title_label'): layout.addWidget(self.title_label)
         layout.addStretch()
-        self.btn_theme = QPushButton("☀️" if main_app.current_theme == "dark" else "🌙")
+        
+        # Desktop Search Bar
+        self.search_bar = QLineEdit()
+        self.search_bar.setPlaceholderText("Search commands or files... (Ctrl+F)")
+        self.search_bar.setFixedWidth(300)
+        self.search_bar.setStyleSheet("""
+            background-color: rgba(255, 255, 255, 10);
+            border: 1px solid rgba(255, 255, 255, 20);
+            font-size: 13px;
+        """)
+        layout.addWidget(self.search_bar)
+        layout.addSpacing(20)
+        
+        self.btn_theme = PremiumButton("☀️" if main_app.current_theme == "dark" else "🌙")
         self.btn_theme.setFixedSize(40, 40)
         self.btn_theme.clicked.connect(main_app.toggle_theme)
         layout.addWidget(self.btn_theme)
-        btn_sett = QPushButton("⚙️")
+        btn_sett = PremiumButton("⚙️")
         btn_sett.setFixedSize(40, 40)
         layout.addWidget(btn_sett)
 
 class ModernSidebar(QFrame):
     def __init__(self, main_app):
-        super().__init__()
+        super(ModernSidebar, self).__init__(main_app)
         self.setObjectName("Sidebar")
         self.setFixedWidth(240)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 30, 15, 30)
         layout.setSpacing(8)
         self.nav_items = []
-        nav_config = [("Dashboard", "📊"), ("Repositories", "📂"), ("Commit", "📝"), ("Branches", "⇌"), ("History", "↺"), ("Settings", "⚙️")]
+        nav_config = [
+            ("Dashboard", "󰕷"), ("Repositories", "󰓼"), ("Commit", "󰄲"), 
+            ("Branches", "󰘬"), ("History", "󰄉"), ("Settings", "󰒓")
+        ]
         for text, icon in nav_config:
             btn = NavItem(text, icon)
             btn.clicked.connect(main_app.on_nav_clicked)
@@ -408,7 +756,7 @@ class ModernSidebar(QFrame):
 
 class FileRowWidget(QWidget):
     def __init__(self, filename, status_code, color):
-        super().__init__()
+        super(FileRowWidget, self).__init__()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         s = QLabel(status_code)
@@ -425,14 +773,24 @@ class FileRowWidget(QWidget):
 
 class BasePage(QWidget):
     def __init__(self, title, subtitle, main_app):
-        super().__init__()
+        super(BasePage, self).__init__(main_app)
         self.main = main_app
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        header = QVBoxLayout()
-        t = QLabel(title); t.setObjectName("Title"); header.addWidget(t)
-        s = QLabel(subtitle); s.setStyleSheet("color: #a0aec0; font-size: 13px;"); header.addWidget(s)
-        self.layout.addLayout(header)
+        
+        header_container = QWidget()
+        header = QVBoxLayout(header_container)
+        header.setContentsMargins(0, 0, 0, 0)
+        
+        t = QLabel(title)
+        t.setObjectName("Title")
+        header.addWidget(t)
+        
+        s = QLabel(subtitle)
+        s.setStyleSheet(f"color: {THEMES['dark']['text_secondary']}; font-size: 13px; font-weight: 500;")
+        header.addWidget(s)
+        
+        self.layout.addWidget(header_container)
         self.layout.addSpacing(20)
         self.content_layout = QVBoxLayout()
         self.layout.addLayout(self.content_layout)
@@ -440,25 +798,26 @@ class BasePage(QWidget):
 
 class DashboardPage(BasePage):
     def __init__(self, main_app):
-        super().__init__("Dashboard", "Welcome to RepoMate – AI Git Assistant", main_app)
-        panel = GlassPanel()
+        BasePage.__init__(self, "Dashboard", "Welcome to REPOMATE – AI Git Assistant", main_app)
+        panel = GlassPanel(self)
         p_lay = QVBoxLayout(panel)
         p_lay.addWidget(QLabel("Repository Path").setObjectName("SectionLabel"))
         row = QHBoxLayout()
         self.txt_repo_path = QLineEdit(); self.txt_repo_path.setReadOnly(True)
-        btn_br = QPushButton("Browse"); btn_br.clicked.connect(main_app.select_repo)
+        btn_br = PremiumButton("Browse"); btn_br.clicked.connect(main_app.select_repo)
         row.addWidget(self.txt_repo_path); row.addWidget(btn_br)
         p_lay.addLayout(row)
         self.content_layout.addWidget(panel)
-        grid = QHBoxLayout(); grid.setSpacing(24)
-        left = QVBoxLayout(); left.setSpacing(20)
+        grid = QHBoxLayout(); grid.setSpacing(32)
+        grid.setContentsMargins(10, 10, 10, 10)
+        left = QVBoxLayout(); left.setSpacing(24)
         cmd_p = GlassPanel(); cmd_lay = QVBoxLayout(cmd_p)
         cmd_lay.addWidget(QLabel("AI Command").setObjectName("SectionLabel"))
         self.txt_command = QTextEdit(); self.txt_command.setPlaceholderText("Enter command..."); self.txt_command.setFixedHeight(80)
         cmd_lay.addWidget(self.txt_command)
         ctrl = QHBoxLayout()
-        self.btn_mic = QPushButton("🎤"); self.btn_mic.setFixedSize(40, 40); self.btn_mic.clicked.connect(main_app.toggle_recording)
-        self.btn_plan = QPushButton("Generate Plan"); self.btn_plan.setObjectName("PrimaryBtn"); self.btn_plan.clicked.connect(main_app.plan_action)
+        self.btn_mic = PulsingButton("🎤"); self.btn_mic.setFixedSize(40, 40); self.btn_mic.clicked.connect(main_app.toggle_recording)
+        self.btn_plan = PulsingButton("Generate Plan"); self.btn_plan.setObjectName("PrimaryBtn"); self.btn_plan.clicked.connect(main_app.plan_action)
         ctrl.addWidget(self.btn_mic); ctrl.addWidget(self.btn_plan)
         cmd_lay.addLayout(ctrl)
         left.addWidget(cmd_p)
@@ -467,39 +826,120 @@ class DashboardPage(BasePage):
         plan_lay.addWidget(QLabel("Suggested Plan").setObjectName("SectionLabel"))
         self.txt_plan_preview = QPlainTextEdit(); self.txt_plan_preview.setReadOnly(True); self.txt_plan_preview.setStyleSheet("font-family: monospace;")
         plan_lay.addWidget(self.txt_plan_preview)
-        self.btn_confirm = QPushButton("Confirm & Execute"); self.btn_confirm.setObjectName("PrimaryBtn"); self.btn_confirm.clicked.connect(main_app.execute_plan)
+        self.btn_confirm = PulsingButton("Confirm & Execute"); self.btn_confirm.setObjectName("PrimaryBtn"); self.btn_confirm.clicked.connect(main_app.execute_plan)
         plan_lay.addWidget(self.btn_confirm)
         left.addWidget(self.plan_card)
         self.commit_assist = GlassPanel(); self.commit_assist.setVisible(False); ca_lay = QVBoxLayout(self.commit_assist)
         ca_lay.addWidget(QLabel("Commit Message").setObjectName("SectionLabel"))
-        c_row = QHBoxLayout(); self.txt_commit_msg = QLineEdit(); btn_ai = QPushButton("AI Gen"); btn_ai.clicked.connect(main_app.generate_commit_ai)
+        c_row = QHBoxLayout(); self.txt_commit_msg = QLineEdit(); btn_ai = PremiumButton("AI Gen"); btn_ai.clicked.connect(main_app.generate_commit_ai)
         c_row.addWidget(self.txt_commit_msg); c_row.addWidget(btn_ai)
         ca_lay.addLayout(c_row); left.addWidget(self.commit_assist); left.addStretch()
         right = QVBoxLayout(); right.setSpacing(20)
         out_p = GlassPanel(); out_lay = QVBoxLayout(out_p); out_lay.addWidget(QLabel("Git Output").setObjectName("SectionLabel"))
         self.git_output = QListWidget(); out_lay.addWidget(self.git_output); right.addWidget(out_p)
-        st_p = GlassPanel(); st_lay = QVBoxLayout(st_p); st_lay.addWidget(QLabel("Status").setObjectName("SectionLabel"))
-        self.card_branch = StatusCard("Branch", "⇌"); self.card_status = StatusCard("Changes", "●"); self.card_last = StatusCard("Last Commit", "🕒")
-        st_lay.addWidget(self.card_branch); st_lay.addWidget(self.card_status); st_lay.addWidget(self.card_last); right.addWidget(st_p); right.addStretch()
-        grid.addLayout(left, 3); grid.addLayout(right, 2); self.content_layout.addLayout(grid)
+        st_p = GlassPanel(); st_lay = QVBoxLayout(st_p); st_lay.addWidget(QLabel("Real-time Status").setObjectName("SectionLabel"))
+        self.card_branch = StatusCard("Active Branch", "󰘬"); self.card_status = StatusCard("Working Tree", "󱇬"); self.card_last = StatusCard("Latest Activity", "🕒")
+        st_lay.addWidget(self.card_branch)
+        st_lay.addWidget(self.card_status)
+        st_lay.addWidget(self.card_last)
+        right.addWidget(st_p)
+        right.addStretch()
+        grid.addLayout(left, 3)
+        grid.addLayout(right, 2)
+        self.content_layout.addLayout(grid)
 
 class RepositoriesPage(BasePage):
     def __init__(self, main_app):
-        super().__init__("Repositories", "Manage workspace", main_app)
+        BasePage.__init__(self, "Repositories", "Manage workspace", main_app)
         p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Active Repo").setObjectName("SectionLabel"))
         self.lbl_current = QLabel("None"); self.lbl_current.setStyleSheet("font-size: 16px; font-weight: bold;"); l.addWidget(self.lbl_current)
-        b = QPushButton("Select Folder"); b.setObjectName("PrimaryBtn"); b.clicked.connect(main_app.select_repo); l.addWidget(b)
-        self.content_layout.addWidget(p); self.content_layout.addStretch()
+        b = PulsingButton("Select Folder"); b.setObjectName("PrimaryBtn"); b.clicked.connect(main_app.select_repo); l.addWidget(b)
+        self.content_layout.addWidget(p)
+        
+        # GitHub Search Section
+        gh_p = GlassPanel(); gh_l = QVBoxLayout(gh_p)
+        gh_l.addWidget(QLabel("GitHub Repositories").setObjectName("SectionLabel"))
+        
+        search_row = QHBoxLayout()
+        self.txt_gh_search = QLineEdit(); self.txt_gh_search.setPlaceholderText("Search GitHub or leave empty for your repos...")
+        btn_gh_fetch = PremiumButton("Fetch"); btn_gh_fetch.clicked.connect(self.fetch_github_repos)
+        search_row.addWidget(self.txt_gh_search); search_row.addWidget(btn_gh_fetch)
+        gh_l.addLayout(search_row)
+        
+        self.gh_list = QListWidget(); self.gh_list.setFixedHeight(250)
+        gh_l.addWidget(self.gh_list)
+        
+        btn_clone = PulsingButton("Clone Selected"); btn_clone.setObjectName("PrimaryBtn"); btn_clone.clicked.connect(self.clone_selected)
+        gh_l.addWidget(btn_clone)
+        
+        self.content_layout.addWidget(gh_p)
+        self.content_layout.addStretch()
+
+    def fetch_github_repos(self):
+        query = self.txt_gh_search.text()
+        self.gh_list.clear()
+        self.main.log("[INFO] Fetching GitHub repositories...")
+        
+        def run():
+            try:
+                if query:
+                    repos = self.main.git.github.search_repos(query)
+                else:
+                    repos = self.main.git.github.get_user_repos()
+                return repos
+            except Exception as e:
+                raise e
+
+        self.worker = GenericWorker(run)
+        self.worker.result.connect(self.on_repos_fetched)
+        self.worker.error.connect(lambda e: self.main.log(f"[ERROR] {e}"))
+        self.worker.start()
+
+    def on_repos_fetched(self, repos):
+        self.gh_list.clear()
+        for r in repos:
+            it = QListWidgetItem(f"{r['full_name']} (Stars: {r['stargazers_count']})")
+            it.setData(Qt.UserRole, r['clone_url'])
+            self.gh_list.addItem(it)
+        self.main.log(f"[SUCCESS] Loaded {len(repos)} repositories")
+
+    def clone_selected(self):
+        it = self.gh_list.currentItem()
+        if not it:
+            self.main.log("[WARN] Select a repo to clone")
+            return
+        
+        url = it.data(Qt.UserRole)
+        name = it.text().split(" (")[0].split("/")[-1]
+        
+        path = QFileDialog.getExistingDirectory(self, "Select Parent Directory for Clone")
+        if not path: return
+        
+        target = os.path.join(path, name)
+        self.main.log(f"[INFO] Cloning {url} to {target}...")
+        
+        self.worker = GenericWorker(self.main.git.clone, url, target)
+        self.worker.result.connect(self.on_clone_finished)
+        self.worker.error.connect(lambda e: self.main.log(f"[ERROR] {e}"))
+        self.worker.start()
+
+    def on_clone_finished(self, res):
+        success, msg = res
+        if success:
+            self.main.log(f"[SUCCESS] {msg}")
+            self.main.update_git_status()
+        else:
+            self.main.log(f"[ERROR] {msg}")
 
 class CommitPage(BasePage):
     def __init__(self, main_app):
-        super().__init__("Commit", "Review and finalize", main_app)
+        BasePage.__init__(self, "Commit", "Review and finalize", main_app)
         split = QHBoxLayout(); s_p = GlassPanel(); s_l = QVBoxLayout(s_p); s_l.addWidget(QLabel("Pending Files").setObjectName("SectionLabel"))
         self.file_list = QListWidget(); s_l.addWidget(self.file_list)
-        b_s = QPushButton("Stage All"); b_s.clicked.connect(main_app.git_stage_all); s_l.addWidget(b_s); split.addWidget(s_p)
+        b_s = PremiumButton("Stage All"); b_s.clicked.connect(main_app.git_stage_all); s_l.addWidget(b_s); split.addWidget(s_p)
         c_p = GlassPanel(); c_l = QVBoxLayout(c_p); c_l.addWidget(QLabel("Message").setObjectName("SectionLabel"))
         self.txt_msg = QTextEdit(); c_l.addWidget(self.txt_msg)
-        b_c = QPushButton("Commit"); b_c.setObjectName("PrimaryBtn"); b_c.clicked.connect(self.commit_manual); c_l.addWidget(b_c); split.addWidget(c_p)
+        b_c = PremiumButton("Commit"); b_c.setObjectName("PrimaryBtn"); b_c.clicked.connect(self.commit_manual); c_l.addWidget(b_c); split.addWidget(c_p)
         self.content_layout.addLayout(split)
     def commit_manual(self):
         m = self.txt_msg.toPlainText()
@@ -507,22 +947,22 @@ class CommitPage(BasePage):
 
 class BranchesPage(BasePage):
     def __init__(self, main_app):
-        super().__init__("Branches", "Local branch management", main_app)
+        BasePage.__init__(self, "Branches", "Local branch management", main_app)
         p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Branches").setObjectName("SectionLabel"))
         self.branch_list = QListWidget(); l.addWidget(self.branch_list)
-        b = QPushButton("New Branch"); b.setObjectName("PrimaryBtn"); b.clicked.connect(main_app.git_create_branch); l.addWidget(b)
+        b = PremiumButton("New Branch"); b.setObjectName("PrimaryBtn"); b.clicked.connect(main_app.git_create_branch); l.addWidget(b)
         self.content_layout.addWidget(p); self.content_layout.addStretch()
 
 class HistoryPage(BasePage):
     def __init__(self, main_app):
-        super().__init__("History", "Commit timeline", main_app)
+        BasePage.__init__(self, "History", "Commit timeline", main_app)
         p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Recent Log").setObjectName("SectionLabel"))
         self.history_list = QListWidget(); self.history_list.setStyleSheet("font-family: monospace;"); l.addWidget(self.history_list)
         self.content_layout.addWidget(p)
 
 class SettingsPage(BasePage):
     def __init__(self, main_app):
-        super().__init__("Settings", "Configure preferences", main_app)
+        BasePage.__init__(self, "Settings", "Configure preferences", main_app)
         p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Microphone").setObjectName("SectionLabel"))
         self.combo_mic = QComboBox(); l.addWidget(self.combo_mic)
         l.addSpacing(20); l.addWidget(QLabel("AI Model").setObjectName("SectionLabel"))
@@ -533,7 +973,7 @@ class SettingsPage(BasePage):
 
 class GitEaseApp(QWidget):
     def __init__(self):
-        super().__init__()
+        super(GitEaseApp, self).__init__()
         self.setWindowTitle("RepoMate – AI Git Assistant")
         self.resize(1100, 800)
         self.git = GitManager(".")
@@ -551,7 +991,9 @@ class GitEaseApp(QWidget):
             "Commit": CommitPage(self), "Branches": BranchesPage(self),
             "History": HistoryPage(self), "Settings": SettingsPage(self)
         }
-        for p in self.pages.values(): self.stack.addWidget(p)
+        for p in self.pages.values():
+            if p is not None:
+                self.stack.addWidget(p)
         rl.addWidget(self.stack); l.addWidget(r)
         self.populate_mics(); self.switch_to_page("Dashboard")
         self.sidebar.nav_items[0].setProperty("active", True)
@@ -571,35 +1013,63 @@ class GitEaseApp(QWidget):
             for w in p.findChildren(GlassPanel): w.update_glow(self.current_theme)
 
     def switch_to_page(self, name):
-        if name in self.pages: self.stack.setCurrentWidget(self.pages[name])
+        if name in self.pages:
+            new_widget = self.pages[name]
+            # Smooth Fade Transition
+            self.anim = QPropertyAnimation(new_widget, b"windowOpacity")
+            self.anim.setDuration(300)
+            self.anim.setStartValue(0.0)
+            self.anim.setEndValue(1.0)
+            self.stack.setCurrentWidget(new_widget)
+            self.anim.start()
 
     def log(self, msg):
         self.pages["Dashboard"].git_output.addItem(msg)
         self.pages["Dashboard"].git_output.scrollToBottom()
 
     def update_git_status(self):
-        s = self.git.get_status(); dash = self.pages["Dashboard"]
+        # Prevent multiple overlapping updates
+        if hasattr(self, 'status_worker') and self.status_worker.isRunning():
+            return
+            
+        # Show loading shimmer
+        dash = self.pages["Dashboard"]
+        dash.card_branch.show_loading()
+        dash.card_status.show_loading()
+        dash.card_last.show_loading()
+            
+        self.status_worker = GitStatusWorker(self.git)
+        self.status_worker.status_updated.connect(self.on_status_ready)
+        self.status_worker.branches_updated.connect(self.on_branches_ready)
+        self.status_worker.log_updated.connect(self.on_history_ready)
+        self.status_worker.start()
+
+    def on_status_ready(self, s):
+        dash = self.pages["Dashboard"]
         self.sidebar.pill_git.set_state(s['initialized'])
         self.sidebar.pill_git.setText("Git Connected" if s['initialized'] else "No Repo")
         dash.txt_repo_path.setText(self.git.repo_path)
         dash.card_branch.set_status(s['initialized'], s['current_branch'])
         dash.card_status.set_status(s['initialized'], f"{s['pending_changes']} Changes")
-        try:
-            o, _, _ = self.git.run_git(["log", "-1", "--format=%cr"])
-            dash.card_last.set_status(s['initialized'], o if o else "No commits")
-        except: dash.card_last.set_status(False, "Unknown")
+        dash.card_last.set_status(s['initialized'], s.get('last_commit', "Unknown"))
+        
         self.pages["Repositories"].lbl_current.setText(self.git.repo_path)
         cp = self.pages["Commit"]; cp.file_list.clear()
         for f in s['files']:
             it = QListWidgetItem(cp.file_list)
             w = FileRowWidget(f['name'], f['status'], f['color'])
-            it.setSizeHint(w.sizeHint()); cp.file_list.setItemWidget(it, w)
+            it.setSizeHint(w.sizeHint())
+            cp.file_list.setItemWidget(it, w)
+
+    def on_branches_ready(self, branches):
         bp = self.pages["Branches"]; bp.branch_list.clear()
-        for b in self.git.get_branches(): bp.branch_list.addItem(f"● {b}" + (" (Current)" if b == s['current_branch'] else ""))
+        current = self.git.get_status().get('current_branch', 'Unknown')
+        for b in branches:
+            bp.branch_list.addItem(f"● {b}" + (" (Current)" if b == current else ""))
+
+    def on_history_ready(self, logs):
         hp = self.pages["History"]; hp.history_list.clear()
-        try:
-            for l in self.git.run_command(["log", "--oneline", "-n", "10"]).splitlines(): hp.history_list.addItem(l)
-        except: pass
+        for l in logs: hp.history_list.addItem(l)
 
     def populate_mics(self):
         c = self.pages["Settings"].combo_mic; c.clear()
@@ -648,18 +1118,24 @@ class GitEaseApp(QWidget):
 
     def on_exec_finished(self):
         dash = self.pages["Dashboard"]; dash.btn_confirm.setEnabled(True); dash.btn_confirm.setText("Confirm & Execute")
+        dash.btn_confirm.trigger_success()
         dash.plan_card.setVisible(False); dash.commit_assist.setVisible(False); self.update_git_status(); self.log("[SUCCESS] Done")
 
     def generate_commit_ai(self):
         dash = self.pages["Dashboard"]; inst = dash.txt_command.toPlainText() or "current changes"
         self.log("[AI] Generating commit message..."); dash.txt_commit_msg.setPlaceholderText("Generating...")
-        def run():
+        
+        def run_ai():
             try:
                 p = planner.generate_plan(f"Suggest commit message: {inst}")
-                msg = p.get('commit_message', "Update")
-                dash.txt_commit_msg.setText(msg); self.log(f"[AI] Suggested: {msg}")
-            except Exception as e: self.log(f"[ERROR] {e}")
-        threading.Thread(target=run, daemon=True).start()
+                return p.get('commit_message', "Update")
+            except Exception as e:
+                raise e
+
+        self.ai_worker = GenericWorker(run_ai)
+        self.ai_worker.result.connect(lambda msg: (dash.txt_commit_msg.setText(msg), self.log(f"[AI] Suggested: {msg}")))
+        self.ai_worker.error.connect(lambda e: self.log(f"[ERROR] {e}"))
+        self.ai_worker.start()
 
     def select_repo(self):
         p = QFileDialog.getExistingDirectory(self, "Select Repo")

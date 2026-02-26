@@ -1,9 +1,11 @@
 import subprocess
 import os
+from .github_api import GitHubAPI
 
 class GitManager:
     def __init__(self, repo_path="."):
         self.repo_path = os.path.abspath(repo_path)
+        self.github = GitHubAPI()
 
     def run_git(self, args):
         """Helper to run git commands."""
@@ -145,3 +147,26 @@ class GitManager:
                 break
                 
         return results
+
+    def clone(self, url, target_dir):
+        """Clones a repository into a target directory."""
+        if not os.path.isabs(target_dir):
+            target_dir = os.path.join(os.getcwd(), target_dir)
+        
+        # Ensure parent directory exists
+        os.makedirs(os.path.dirname(target_dir), exist_ok=True)
+        
+        try:
+            process = subprocess.run(
+                ["git", "clone", url, target_dir],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            if process.returncode == 0:
+                self.repo_path = target_dir
+                return True, f"Successfully cloned {url} to {target_dir}"
+            else:
+                return False, f"Failed to clone: {process.stderr}"
+        except Exception as e:
+            return False, str(e)
