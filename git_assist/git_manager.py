@@ -17,9 +17,7 @@ class GitManager:
                 text=True,
                 check=False,
                 encoding='utf-8', 
-                # forcing utf-8 to avoid encoding issues on windows 
-                # though sometimes 'cp1252' is default. 
-                # Let's rely on python's default handling or explicit utf-8 if possible.
+                errors='replace'
             )
             return result.stdout.strip(), result.stderr.strip(), result.returncode
         except FileNotFoundError:

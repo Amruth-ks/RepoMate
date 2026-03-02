@@ -16,7 +16,7 @@ from PyQt5.QtGui import QColor, QFont, QIcon, QPalette, QLinearGradient, QBrush,
 
 # Local imports
 try:
-    from git_assist.main import processor, planner, builder, validator
+    from git_assist.main import processor, planner, validator
     from git_assist.git_manager import GitManager
 except ImportError:
     # Fallback for testing environment if needed
@@ -253,13 +253,21 @@ class AIWorker(QThread):
 
     def run(self):
         try:
+            print("processing")
             norm_text, _ = processor.normalize(self.text)
             plan = planner.generate_plan(norm_text)
+            print("planning",plan)
             safe, msg = validator.validate(plan)
+            print("validating",safe,msg)
             if not safe:
                 self.error.emit(f"Unsafe Plan: {msg}")
                 return
-            commands = builder.build(plan)
+            commands = plan.get("commands") if isinstance(plan, dict) else None
+            if not isinstance(commands, list) or not commands:
+                raise ValueError("Planner did not return a valid 'commands' list")
+            print("hello")
+            print(commands)
+            
             self.finished.emit(plan, commands)
         except Exception as e:
             self.error.emit(str(e))
@@ -801,7 +809,9 @@ class DashboardPage(BasePage):
         BasePage.__init__(self, "Dashboard", "Welcome to REPOMATE – AI Git Assistant", main_app)
         panel = GlassPanel(self)
         p_lay = QVBoxLayout(panel)
-        p_lay.addWidget(QLabel("Repository Path").setObjectName("SectionLabel"))
+        _lbl_repo_path = QLabel("Repository Path")
+        _lbl_repo_path.setObjectName("SectionLabel")
+        p_lay.addWidget(_lbl_repo_path)
         row = QHBoxLayout()
         self.txt_repo_path = QLineEdit(); self.txt_repo_path.setReadOnly(True)
         btn_br = PremiumButton("Browse"); btn_br.clicked.connect(main_app.select_repo)
@@ -812,7 +822,9 @@ class DashboardPage(BasePage):
         grid.setContentsMargins(10, 10, 10, 10)
         left = QVBoxLayout(); left.setSpacing(24)
         cmd_p = GlassPanel(); cmd_lay = QVBoxLayout(cmd_p)
-        cmd_lay.addWidget(QLabel("AI Command").setObjectName("SectionLabel"))
+        _lbl_ai_command = QLabel("AI Command")
+        _lbl_ai_command.setObjectName("SectionLabel")
+        cmd_lay.addWidget(_lbl_ai_command)
         self.txt_command = QTextEdit(); self.txt_command.setPlaceholderText("Enter command..."); self.txt_command.setFixedHeight(80)
         cmd_lay.addWidget(self.txt_command)
         ctrl = QHBoxLayout()
@@ -823,21 +835,43 @@ class DashboardPage(BasePage):
         left.addWidget(cmd_p)
         self.waveform = WaveformWidget(main_app); self.waveform.setVisible(False); left.addWidget(self.waveform)
         self.plan_card = GlassPanel(); self.plan_card.setVisible(False); plan_lay = QVBoxLayout(self.plan_card)
-        plan_lay.addWidget(QLabel("Suggested Plan").setObjectName("SectionLabel"))
+        _lbl_suggested_plan = QLabel("Suggested Plan")
+        _lbl_suggested_plan.setObjectName("SectionLabel")
+        plan_lay.addWidget(_lbl_suggested_plan)
         self.txt_plan_preview = QPlainTextEdit(); self.txt_plan_preview.setReadOnly(True); self.txt_plan_preview.setStyleSheet("font-family: monospace;")
         plan_lay.addWidget(self.txt_plan_preview)
         self.btn_confirm = PulsingButton("Confirm & Execute"); self.btn_confirm.setObjectName("PrimaryBtn"); self.btn_confirm.clicked.connect(main_app.execute_plan)
         plan_lay.addWidget(self.btn_confirm)
         left.addWidget(self.plan_card)
         self.commit_assist = GlassPanel(); self.commit_assist.setVisible(False); ca_lay = QVBoxLayout(self.commit_assist)
-        ca_lay.addWidget(QLabel("Commit Message").setObjectName("SectionLabel"))
+        _lbl_commit_message = QLabel("Commit Message")
+        _lbl_commit_message.setObjectName("SectionLabel")
+        ca_lay.addWidget(_lbl_commit_message)
         c_row = QHBoxLayout(); self.txt_commit_msg = QLineEdit(); btn_ai = PremiumButton("AI Gen"); btn_ai.clicked.connect(main_app.generate_commit_ai)
         c_row.addWidget(self.txt_commit_msg); c_row.addWidget(btn_ai)
         ca_lay.addLayout(c_row); left.addWidget(self.commit_assist); left.addStretch()
         right = QVBoxLayout(); right.setSpacing(20)
-        out_p = GlassPanel(); out_lay = QVBoxLayout(out_p); out_lay.addWidget(QLabel("Git Output").setObjectName("SectionLabel"))
+        out_p = GlassPanel(); out_lay = QVBoxLayout(out_p)
+        _lbl_git_output = QLabel("Git Output")
+        _lbl_git_output.setObjectName("SectionLabel")
+        out_lay.addWidget(_lbl_git_output)
         self.git_output = QListWidget(); out_lay.addWidget(self.git_output); right.addWidget(out_p)
-        st_p = GlassPanel(); st_lay = QVBoxLayout(st_p); st_lay.addWidget(QLabel("Real-time Status").setObjectName("SectionLabel"))
+
+        cli_p = GlassPanel(); cli_lay = QVBoxLayout(cli_p)
+        _lbl_cli_output = QLabel("CLI Output")
+        _lbl_cli_output.setObjectName("SectionLabel")
+        cli_lay.addWidget(_lbl_cli_output)
+        self.cli_output = QPlainTextEdit()
+        self.cli_output.setReadOnly(True)
+        self.cli_output.setStyleSheet("font-family: monospace;")
+        self.cli_output.setFixedHeight(180)
+        cli_lay.addWidget(self.cli_output)
+        right.addWidget(cli_p)
+
+        st_p = GlassPanel(); st_lay = QVBoxLayout(st_p)
+        _lbl_real_time_status = QLabel("Real-time Status")
+        _lbl_real_time_status.setObjectName("SectionLabel")
+        st_lay.addWidget(_lbl_real_time_status)
         self.card_branch = StatusCard("Active Branch", "󰘬"); self.card_status = StatusCard("Working Tree", "󱇬"); self.card_last = StatusCard("Latest Activity", "🕒")
         st_lay.addWidget(self.card_branch)
         st_lay.addWidget(self.card_status)
@@ -851,14 +885,19 @@ class DashboardPage(BasePage):
 class RepositoriesPage(BasePage):
     def __init__(self, main_app):
         BasePage.__init__(self, "Repositories", "Manage workspace", main_app)
-        p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Active Repo").setObjectName("SectionLabel"))
+        p = GlassPanel(); l = QVBoxLayout(p)
+        _lbl_active_repo = QLabel("Active Repo")
+        _lbl_active_repo.setObjectName("SectionLabel")
+        l.addWidget(_lbl_active_repo)
         self.lbl_current = QLabel("None"); self.lbl_current.setStyleSheet("font-size: 16px; font-weight: bold;"); l.addWidget(self.lbl_current)
         b = PulsingButton("Select Folder"); b.setObjectName("PrimaryBtn"); b.clicked.connect(main_app.select_repo); l.addWidget(b)
         self.content_layout.addWidget(p)
         
         # GitHub Search Section
         gh_p = GlassPanel(); gh_l = QVBoxLayout(gh_p)
-        gh_l.addWidget(QLabel("GitHub Repositories").setObjectName("SectionLabel"))
+        _lbl_github_repos = QLabel("GitHub Repositories")
+        _lbl_github_repos.setObjectName("SectionLabel")
+        gh_l.addWidget(_lbl_github_repos)
         
         search_row = QHBoxLayout()
         self.txt_gh_search = QLineEdit(); self.txt_gh_search.setPlaceholderText("Search GitHub or leave empty for your repos...")
@@ -934,10 +973,16 @@ class RepositoriesPage(BasePage):
 class CommitPage(BasePage):
     def __init__(self, main_app):
         BasePage.__init__(self, "Commit", "Review and finalize", main_app)
-        split = QHBoxLayout(); s_p = GlassPanel(); s_l = QVBoxLayout(s_p); s_l.addWidget(QLabel("Pending Files").setObjectName("SectionLabel"))
+        split = QHBoxLayout(); s_p = GlassPanel(); s_l = QVBoxLayout(s_p)
+        _lbl_pending_files = QLabel("Pending Files")
+        _lbl_pending_files.setObjectName("SectionLabel")
+        s_l.addWidget(_lbl_pending_files)
         self.file_list = QListWidget(); s_l.addWidget(self.file_list)
         b_s = PremiumButton("Stage All"); b_s.clicked.connect(main_app.git_stage_all); s_l.addWidget(b_s); split.addWidget(s_p)
-        c_p = GlassPanel(); c_l = QVBoxLayout(c_p); c_l.addWidget(QLabel("Message").setObjectName("SectionLabel"))
+        c_p = GlassPanel(); c_l = QVBoxLayout(c_p)
+        _lbl_message = QLabel("Message")
+        _lbl_message.setObjectName("SectionLabel")
+        c_l.addWidget(_lbl_message)
         self.txt_msg = QTextEdit(); c_l.addWidget(self.txt_msg)
         b_c = PremiumButton("Commit"); b_c.setObjectName("PrimaryBtn"); b_c.clicked.connect(self.commit_manual); c_l.addWidget(b_c); split.addWidget(c_p)
         self.content_layout.addLayout(split)
@@ -948,7 +993,10 @@ class CommitPage(BasePage):
 class BranchesPage(BasePage):
     def __init__(self, main_app):
         BasePage.__init__(self, "Branches", "Local branch management", main_app)
-        p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Branches").setObjectName("SectionLabel"))
+        p = GlassPanel(); l = QVBoxLayout(p)
+        _lbl_branches = QLabel("Branches")
+        _lbl_branches.setObjectName("SectionLabel")
+        l.addWidget(_lbl_branches)
         self.branch_list = QListWidget(); l.addWidget(self.branch_list)
         b = PremiumButton("New Branch"); b.setObjectName("PrimaryBtn"); b.clicked.connect(main_app.git_create_branch); l.addWidget(b)
         self.content_layout.addWidget(p); self.content_layout.addStretch()
@@ -956,16 +1004,25 @@ class BranchesPage(BasePage):
 class HistoryPage(BasePage):
     def __init__(self, main_app):
         BasePage.__init__(self, "History", "Commit timeline", main_app)
-        p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Recent Log").setObjectName("SectionLabel"))
+        p = GlassPanel(); l = QVBoxLayout(p)
+        _lbl_recent_log = QLabel("Recent Log")
+        _lbl_recent_log.setObjectName("SectionLabel")
+        l.addWidget(_lbl_recent_log)
         self.history_list = QListWidget(); self.history_list.setStyleSheet("font-family: monospace;"); l.addWidget(self.history_list)
         self.content_layout.addWidget(p)
 
 class SettingsPage(BasePage):
     def __init__(self, main_app):
         BasePage.__init__(self, "Settings", "Configure preferences", main_app)
-        p = GlassPanel(); l = QVBoxLayout(p); l.addWidget(QLabel("Microphone").setObjectName("SectionLabel"))
+        p = GlassPanel(); l = QVBoxLayout(p)
+        _lbl_microphone = QLabel("Microphone")
+        _lbl_microphone.setObjectName("SectionLabel")
+        l.addWidget(_lbl_microphone)
         self.combo_mic = QComboBox(); l.addWidget(self.combo_mic)
-        l.addSpacing(20); l.addWidget(QLabel("AI Model").setObjectName("SectionLabel"))
+        l.addSpacing(20)
+        _lbl_ai_model = QLabel("AI Model")
+        _lbl_ai_model.setObjectName("SectionLabel")
+        l.addWidget(_lbl_ai_model)
         self.combo_model = QComboBox(); self.combo_model.addItems(["GPT-4", "GPT-3.5", "Local"]); l.addWidget(self.combo_model)
         self.content_layout.addWidget(p); self.content_layout.addStretch()
 
@@ -980,6 +1037,7 @@ class GitEaseApp(QWidget):
         self.current_theme = "dark"
         self.current_plan_commands = None
         self.is_recording = False
+        self._last_git_status_output = None
         self.setStyleSheet(get_stylesheet(self.current_theme))
         l = QHBoxLayout(self); l.setContentsMargins(0, 0, 0, 0); l.setSpacing(0)
         self.sidebar = ModernSidebar(self); l.addWidget(self.sidebar)
@@ -1024,8 +1082,19 @@ class GitEaseApp(QWidget):
             self.anim.start()
 
     def log(self, msg):
-        self.pages["Dashboard"].git_output.addItem(msg)
-        self.pages["Dashboard"].git_output.scrollToBottom()
+        w = self.pages["Dashboard"].git_output
+        try:
+            text = "" if msg is None else str(msg)
+        except Exception:
+            text = ""
+
+        if "\n" in text:
+            for line in text.splitlines():
+                w.addItem(line)
+        else:
+            w.addItem(text)
+
+        w.scrollToBottom()
 
     def update_git_status(self):
         # Prevent multiple overlapping updates
@@ -1052,6 +1121,19 @@ class GitEaseApp(QWidget):
         dash.card_branch.set_status(s['initialized'], s['current_branch'])
         dash.card_status.set_status(s['initialized'], f"{s['pending_changes']} Changes")
         dash.card_last.set_status(s['initialized'], s.get('last_commit', "Unknown"))
+
+        try:
+            if s.get('initialized'):
+                out, err, code = self.git.run_git(["status", "-sb"])
+                status_text = out if code == 0 else (err or "")
+            else:
+                status_text = ""
+        except Exception:
+            status_text = ""
+
+        if status_text and status_text != self._last_git_status_output:
+            self._last_git_status_output = status_text
+            self.log("[STATUS]\n" + status_text)
         
         self.pages["Repositories"].lbl_current.setText(self.git.repo_path)
         cp = self.pages["Commit"]; cp.file_list.clear()
@@ -1105,7 +1187,8 @@ class GitEaseApp(QWidget):
     def on_plan_finished(self, plan, cmds):
         dash = self.pages["Dashboard"]; dash.btn_plan.setEnabled(True); self.current_plan_commands = cmds
         dash.txt_plan_preview.setPlainText("\n".join(cmds)); dash.plan_card.setVisible(True); dash.commit_assist.setVisible(True)
-        if plan and 'commit_message' in plan: dash.txt_commit_msg.setText(plan['commit_message'])
+        if plan and 'commit_message' in plan and plan['commit_message'] is not None:
+            dash.txt_commit_msg.setText(str(plan['commit_message']))
         self.log(f"[SUCCESS] Plan ready ({len(cmds)} steps)")
 
     def on_plan_error(self, m): self.pages["Dashboard"].btn_plan.setEnabled(True); self.log(f"[ERROR] {m}")
@@ -1113,8 +1196,20 @@ class GitEaseApp(QWidget):
     def execute_plan(self):
         if not self.current_plan_commands: self.log("[WARN] No plan"); return
         dash = self.pages["Dashboard"]; dash.btn_confirm.setEnabled(False); dash.btn_confirm.setText("Executing...")
-        self.worker = CommandWorker(self.git, self.current_plan_commands); self.worker.progress.connect(self.log)
+        if hasattr(dash, "cli_output") and dash.cli_output is not None:
+            dash.cli_output.setPlainText("")
+        self.worker = CommandWorker(self.git, self.current_plan_commands)
+        self.worker.progress.connect(self.on_command_progress)
         self.worker.finished.connect(self.on_exec_finished); self.worker.start()
+
+    def on_command_progress(self, msg):
+        self.log(msg)
+        dash = self.pages.get("Dashboard")
+        if dash is not None and hasattr(dash, "cli_output") and dash.cli_output is not None:
+            try:
+                dash.cli_output.appendPlainText("" if msg is None else str(msg))
+            except Exception:
+                pass
 
     def on_exec_finished(self):
         dash = self.pages["Dashboard"]; dash.btn_confirm.setEnabled(True); dash.btn_confirm.setText("Confirm & Execute")

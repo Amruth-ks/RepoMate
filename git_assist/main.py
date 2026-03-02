@@ -1,12 +1,33 @@
-from .multilingual_processor import MultilingualProcessor
-from .ai_git_planner import AIGitPlanner
-from .git_command_builder import GitCommandBuilder
-from .safety_validator import SafetyValidator
 import os
+import sys
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Handle imports for both direct script execution and package-style usage
+if __name__ == "__main__" and __package__ is None:
+    # If run directly as a script, add the current directory to sys.path
+    # so we can use absolute-style imports for sibling modules
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from multilingual_processor import MultilingualProcessor
+    from ai_git_planner import AIGitPlanner
+    from safety_validator import SafetyValidator
+else:
+    # If imported as a package or run with python -m
+    try:
+        from .multilingual_processor import MultilingualProcessor
+        from .ai_git_planner import AIGitPlanner
+        from .safety_validator import SafetyValidator
+    except (ImportError, ValueError):
+        try:
+            from git_assist.multilingual_processor import MultilingualProcessor
+            from git_assist.ai_git_planner import AIGitPlanner
+            from git_assist.safety_validator import SafetyValidator
+        except ImportError:
+            from multilingual_processor import MultilingualProcessor
+            from ai_git_planner import AIGitPlanner
+            from safety_validator import SafetyValidator
 
 API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -16,7 +37,6 @@ if not API_KEY:
 
 processor = MultilingualProcessor()
 planner = AIGitPlanner(API_KEY)
-builder = GitCommandBuilder()
 validator = SafetyValidator()
 
 def run(text=None):
@@ -43,8 +63,8 @@ def run(text=None):
         print("Execution stopped.")
         return
 
-    # Step 4: Build commands
-    commands = builder.build(plan)
+    # Step 4: Commands are generated directly by the planner
+    commands = plan.get("commands", [])
 
     print("\nGenerated Git Commands:")
     for cmd in commands:

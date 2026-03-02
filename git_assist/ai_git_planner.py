@@ -4,26 +4,22 @@ import json
 SYSTEM_PROMPT = """
 You are an intelligent Git assistant.
 
-Convert user instructions into structured JSON Git actions.
+Convert user instructions into a structured JSON plan containing git command strings.
 
 Rules:
 - Output JSON only.
 - Do not explain.
 - Do not include markdown.
 - If multiple steps required, plan sequentially.
-- If commit message missing, leave as null.
+- All commands must be git CLI commands (start with "git ").
+- Never output non-git shell commands.
+- If a commit message is needed but missing, set commit_message to null and use a placeholder commit command.
 
-Supported actions:
-- stage_all
-- stage_selected
-- commit
-- push
-- pull
-- create_branch
-- switch_branch
-- delete_branch
-- amend_commit
-- soft_reset
+Output schema:
+{
+  "commands": ["git ...", "git ..."],
+  "commit_message": null
+}
 
 Example:
 
@@ -32,11 +28,12 @@ Input:
 
 Output:
 {
-  "actions": [
-    {"type": "stage_all"},
-    {"type": "commit", "message": null},
-    {"type": "push", "remote": "origin"}
-  ]
+  "commands": [
+    "git add -A",
+    "git commit -m \"<message>\"",
+    "git push origin"
+  ],
+  "commit_message": null
 }
 """
 
@@ -74,7 +71,14 @@ class AIGitPlanner:
                         content = content[4:]
                     content = content.strip()
 
-                return json.loads(content)
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError:
+                    start = content.find("{")
+                    end = content.rfind("}")
+                    if start != -1 and end != -1 and end > start:
+                        return json.loads(content[start : end + 1])
+                    raise
 
             except Exception as e:
                 print(f"[WARN] Failed with {model}: {e}")
@@ -84,14 +88,3 @@ class AIGitPlanner:
         # If all failed
         raise last_error
 
-
-class SafetyValidator:
-
-    DANGEROUS = ["delete_branch", "soft_reset"]
-
-    def validate(self, plan):
-        DANGEROUS = ["delete_branch", "soft_reset"]
-        for action in plan["actions"]:
-            if action["type"] in DANGEROUS:
-                return False, f"Critical action detected: {action['type']}"
-        return True, "Safe to execute"
