@@ -11,6 +11,24 @@ class GitHubAPI:
         if self.token:
             self.headers["Authorization"] = f"token {self.token}"
 
+    def set_token(self, token):
+        self.token = token
+        self.headers = {
+            "Accept": "application/vnd.github.v3+json",
+        }
+        if self.token:
+            self.headers["Authorization"] = f"token {self.token}"
+
+    def get_authenticated_user(self):
+        url = f"{self.base_url}/user"
+        try:
+            response = requests.get(url, headers=self.headers)
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception:
+            return None
+
     def get_user_repos(self):
         """Fetch all repositories for the authenticated user."""
         url = f"{self.base_url}/user/repos"

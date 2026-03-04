@@ -5,6 +5,7 @@ import wave
 import sounddevice as sd
 import numpy as np
 import speech_recognition as sr
+import re
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, 
     QTextEdit, QListWidget, QListWidgetItem, QLineEdit, QScrollArea, QFrame,
@@ -20,7 +21,10 @@ try:
     from git_assist.git_manager import GitManager
 except ImportError:
     # Fallback for testing environment if needed
-    pass
+    processor = None
+    planner = None
+    validator = None
+    GitManager = None
 
 # ================== THEMES & STYLES ==================
 
@@ -234,9 +238,17 @@ class AudioThread(QThread):
         recognizer = sr.Recognizer()
         audio_data = sr.AudioData(audio.tobytes(), self.samplerate, 2)
         try:
-            text = recognizer.recognize_google(audio_data)
-            self.finished.emit(text)
-        except:
+            text = recognizer.recognize_google(audio_data, show_all=False)
+            # Optional: filter out very short or unlikely results
+            if isinstance(text, str) and len(text.strip()) >= 2:
+                self.finished.emit(text.strip())
+            else:
+                self.finished.emit("")
+        except sr.UnknownValueError:
+            self.finished.emit("")
+        except sr.RequestError as e:
+            self.finished.emit("")
+        except Exception:
             self.finished.emit("")
 
     def stop(self):
@@ -283,9 +295,24 @@ class CommandWorker(QThread):
 
     def run(self):
         try:
-            results = self.git.execute_commands(self.commands)
-            for res in results:
-                self.progress.emit(res)
+            for cmd in self.commands:
+                # Execute once
+                result = self.git.execute_commands([cmd])
+                self.progress.emit(result[0] if result else "")
+                # If push failed due to no upstream, retry with --set-upstream
+                if result and result[0] and "no upstream branch" in result[0]:
+                    # Get current branch name
+                    try:
+                        out, _, code = self.git.run_git(["branch", "--show-current"])
+                        branch = out.strip() if code == 0 else None
+                        if branch:
+                            retry_cmd = f"git push --set-upstream origin {branch}"
+                            retry_res = self.git.execute_commands([retry_cmd])
+                            self.progress.emit(retry_res[0] if retry_res else "")
+                        else:
+                            self.progress.emit("[ERROR] Could not determine current branch for upstream push")
+                    except Exception as e:
+                        self.progress.emit(f"[ERROR] Auto-upstream retry failed: {e}")
         except Exception as e:
             self.progress.emit(f"[ERROR] {e}")
         finally:
@@ -662,9 +689,11 @@ class PulsingButton(PremiumButton):
         self.update()
 
     def paintEvent(self, event):
-        if self.objectName() == "PrimaryBtn" and not self.underMouse():
-            painter = QPainter(self)
-            painter.setRenderHint(QPainter.Antialiasing)
+        # Always draw pulse for mic button (objectName check)
+        is_mic = self.text() == "🎤"
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        if (self.objectName() == "PrimaryBtn" or is_mic) and not self.underMouse():
             t = THEMES["dark"]
             color = QColor(t['accent'])
             color.setAlpha(self._glow_alpha)
@@ -734,6 +763,7 @@ class ModernHeader(QFrame):
         
         self.btn_theme = PremiumButton("☀️" if main_app.current_theme == "dark" else "🌙")
         self.btn_theme.setFixedSize(40, 40)
+        self.btn_theme.setToolTip("Toggle theme")
         self.btn_theme.clicked.connect(main_app.toggle_theme)
         layout.addWidget(self.btn_theme)
         btn_sett = PremiumButton("⚙️")
@@ -828,7 +858,10 @@ class DashboardPage(BasePage):
         self.txt_command = QTextEdit(); self.txt_command.setPlaceholderText("Enter command..."); self.txt_command.setFixedHeight(80)
         cmd_lay.addWidget(self.txt_command)
         ctrl = QHBoxLayout()
-        self.btn_mic = PulsingButton("🎤"); self.btn_mic.setFixedSize(40, 40); self.btn_mic.clicked.connect(main_app.toggle_recording)
+        self.btn_mic = PulsingButton("🎤")
+        self.btn_mic.setFixedSize(44, 44)
+        self.btn_mic.setToolTip("Voice command")
+        self.btn_mic.clicked.connect(main_app.toggle_recording)
         self.btn_plan = PulsingButton("Generate Plan"); self.btn_plan.setObjectName("PrimaryBtn"); self.btn_plan.clicked.connect(main_app.plan_action)
         ctrl.addWidget(self.btn_mic); ctrl.addWidget(self.btn_plan)
         cmd_lay.addLayout(ctrl)
@@ -936,11 +969,18 @@ class RepositoriesPage(BasePage):
 
     def on_repos_fetched(self, repos):
         self.gh_list.clear()
+        allowed = []
         for r in repos:
+            owner = (r.get("owner") or {}).get("login")
+            if not self.main.is_owner_allowed(owner):
+                continue
+            allowed.append(r)
+
+        for r in allowed:
             it = QListWidgetItem(f"{r['full_name']} (Stars: {r['stargazers_count']})")
-            it.setData(Qt.UserRole, r['clone_url'])
+            it.setData(Qt.UserRole, r.get('clone_url'))
             self.gh_list.addItem(it)
-        self.main.log(f"[SUCCESS] Loaded {len(repos)} repositories")
+        self.main.log(f"[SUCCESS] Loaded {len(allowed)} repositories")
 
     def clone_selected(self):
         it = self.gh_list.currentItem()
@@ -949,6 +989,9 @@ class RepositoriesPage(BasePage):
             return
         
         url = it.data(Qt.UserRole)
+        if not self.main.is_remote_allowed(url):
+            self.main.log("[ERROR] Clone blocked: repo is not owned by the connected GitHub account")
+            return
         name = it.text().split(" (")[0].split("/")[-1]
         
         path = QFileDialog.getExistingDirectory(self, "Select Parent Directory for Clone")
@@ -1024,7 +1067,79 @@ class SettingsPage(BasePage):
         _lbl_ai_model.setObjectName("SectionLabel")
         l.addWidget(_lbl_ai_model)
         self.combo_model = QComboBox(); self.combo_model.addItems(["GPT-4", "GPT-3.5", "Local"]); l.addWidget(self.combo_model)
+
+        l.addSpacing(20)
+        _lbl_github = QLabel("GitHub")
+        _lbl_github.setObjectName("SectionLabel")
+        l.addWidget(_lbl_github)
+        self.txt_gh_token = QLineEdit()
+        self.txt_gh_token.setEchoMode(QLineEdit.Password)
+        self.txt_gh_token.setPlaceholderText("GitHub Token (PAT)")
+        l.addWidget(self.txt_gh_token)
+        row = QHBoxLayout()
+        self.btn_gh_connect = PremiumButton("Connect")
+        self.btn_gh_connect.clicked.connect(lambda: main_app.connect_github_account(self.txt_gh_token.text()))
+        self.lbl_gh_user = QLabel("Not connected")
+        row.addWidget(self.btn_gh_connect)
+        row.addWidget(self.lbl_gh_user)
+        l.addLayout(row)
+        l.addSpacing(20)
+        _lbl_git_user = QLabel("Git User")
+        _lbl_git_user.setObjectName("SectionLabel")
+        l.addWidget(_lbl_git_user)
+        self.lbl_current_git_user = QLabel("Current: Not set")
+        self.lbl_current_git_user.setWordWrap(True)
+        self.lbl_current_git_user.setStyleSheet("color: #aaa; font-size: 12px; padding: 4px; background: rgba(255,255,255,5); border-radius: 4px;")
+        l.addWidget(self.lbl_current_git_user)
+        self.txt_git_name = QLineEdit()
+        self.txt_git_name.setPlaceholderText("Git user name")
+        l.addWidget(self.txt_git_name)
+        self.txt_git_email = QLineEdit()
+        self.txt_git_email.setPlaceholderText("Git email")
+        l.addWidget(self.txt_git_email)
+        self.btn_git_user_save = PremiumButton("Save")
+        self.btn_git_user_save.clicked.connect(lambda: self.save_git_user_config(main_app))
+        l.addWidget(self.btn_git_user_save)
         self.content_layout.addWidget(p); self.content_layout.addStretch()
+
+    def save_git_user_config(self, main_app):
+        name = self.txt_git_name.text().strip()
+        email = self.txt_git_email.text().strip()
+        if not name or not email:
+            main_app.log("[WARN] Git name and email must not be empty")
+            return
+        try:
+            if main_app.git:
+                main_app.git.run_git(["config", "--global", "user.name", name])
+                main_app.git.run_git(["config", "--global", "user.email", email])
+                main_app.log(f"[SUCCESS] Global git user set to {name} <{email}>")
+                # Update the display label immediately
+                self.lbl_current_git_user.setText(f"Current: {name} <{email}>")
+            else:
+                main_app.log("[ERROR] Git backend not available")
+        except Exception as e:
+            main_app.log(f"[ERROR] Failed to set global git user: {e}")
+
+    def update_current_git_user_display(self, main_app):
+        """Refresh the 'Current: ...' label from global git config."""
+        if not (hasattr(self, "lbl_current_git_user") and main_app.git):
+            return
+        try:
+            out_name, _, code_name = main_app.git.run_git(["config", "--global", "user.name"])
+            out_email, _, code_email = main_app.git.run_git(["config", "--global", "user.email"])
+            if code_name == 0 and code_email == 0:
+                name = out_name.strip()
+                email = out_email.strip()
+                self.lbl_current_git_user.setText(f"Current: {name} <{email}>")
+                # Also populate the edit fields if empty
+                if not self.txt_git_name.text().strip():
+                    self.txt_git_name.setText(name)
+                if not self.txt_git_email.text().strip():
+                    self.txt_git_email.setText(email)
+            else:
+                self.lbl_current_git_user.setText("Current: Not set")
+        except Exception:
+            self.lbl_current_git_user.setText("Current: Unable to read")
 
 # ================== MAIN APP CLASS ==================
 
@@ -1033,11 +1148,15 @@ class GitEaseApp(QWidget):
         super(GitEaseApp, self).__init__()
         self.setWindowTitle("RepoMate – AI Git Assistant")
         self.resize(1100, 800)
-        self.git = GitManager(".")
+        self.git = GitManager(".") if GitManager is not None else None
         self.current_theme = "dark"
         self.current_plan_commands = None
         self.is_recording = False
         self._last_git_status_output = None
+        self.github_owner_login = None
+        self.allowed_github_org = "repomate-git-assistant-llm"
+        self._status_refresh_pending = False
+        self._selected_repo_path = None
         self.setStyleSheet(get_stylesheet(self.current_theme))
         l = QHBoxLayout(self); l.setContentsMargins(0, 0, 0, 0); l.setSpacing(0)
         self.sidebar = ModernSidebar(self); l.addWidget(self.sidebar)
@@ -1097,8 +1216,11 @@ class GitEaseApp(QWidget):
         w.scrollToBottom()
 
     def update_git_status(self):
+        if self.git is None:
+            return
         # Prevent multiple overlapping updates
         if hasattr(self, 'status_worker') and self.status_worker.isRunning():
+            self._status_refresh_pending = True
             return
             
         # Show loading shimmer
@@ -1111,16 +1233,67 @@ class GitEaseApp(QWidget):
         self.status_worker.status_updated.connect(self.on_status_ready)
         self.status_worker.branches_updated.connect(self.on_branches_ready)
         self.status_worker.log_updated.connect(self.on_history_ready)
+        self.status_worker.error.connect(self.on_status_error)
+        self.status_worker.finished.connect(self.on_status_worker_finished)
         self.status_worker.start()
+
+    def on_status_worker_finished(self):
+        if self._status_refresh_pending:
+            self._status_refresh_pending = False
+            self.update_git_status()
+
+    def on_status_error(self, err_msg):
+        dash = self.pages.get("Dashboard")
+        if dash is None:
+            return
+
+        try:
+            sender = self.sender()
+            sender_git = getattr(sender, "git", None)
+            sender_path = getattr(sender_git, "repo_path", None)
+            current_path = getattr(self.git, "repo_path", None)
+            if sender_path and current_path and sender_path != current_path:
+                return
+        except Exception:
+            pass
+
+        try:
+            dash.card_branch.set_status(False, "Error")
+            dash.card_status.set_status(False, "Error")
+            dash.card_last.set_status(False, "Error")
+        except Exception:
+            pass
+
+        self.log(f"[ERROR] Status refresh failed: {err_msg}")
 
     def on_status_ready(self, s):
         dash = self.pages["Dashboard"]
+
+        try:
+            sender = self.sender()
+            sender_git = getattr(sender, "git", None)
+            sender_path = getattr(sender_git, "repo_path", None)
+            current_path = getattr(self.git, "repo_path", None)
+            if sender_path and current_path and sender_path != current_path:
+                return
+        except Exception:
+            pass
+
         self.sidebar.pill_git.set_state(s['initialized'])
         self.sidebar.pill_git.setText("Git Connected" if s['initialized'] else "No Repo")
-        dash.txt_repo_path.setText(self.git.repo_path)
-        dash.card_branch.set_status(s['initialized'], s['current_branch'])
-        dash.card_status.set_status(s['initialized'], f"{s['pending_changes']} Changes")
-        dash.card_last.set_status(s['initialized'], s.get('last_commit', "Unknown"))
+        try:
+            dash.txt_repo_path.setText(self._selected_repo_path or (self.git.repo_path if self.git else ""))
+        except Exception:
+            pass
+
+        if s.get('initialized'):
+            dash.card_branch.set_status(True, s.get('current_branch', 'Unknown'))
+            dash.card_status.set_status(True, f"{s.get('pending_changes', 0)} Changes")
+            dash.card_last.set_status(True, s.get('last_commit', "Unknown"))
+        else:
+            dash.card_branch.set_status(False, "No Repo")
+            dash.card_status.set_status(False, "No Repo")
+            dash.card_last.set_status(False, "No Repo")
 
         try:
             if s.get('initialized'):
@@ -1135,7 +1308,10 @@ class GitEaseApp(QWidget):
             self._last_git_status_output = status_text
             self.log("[STATUS]\n" + status_text)
         
-        self.pages["Repositories"].lbl_current.setText(self.git.repo_path)
+        try:
+            self.pages["Repositories"].lbl_current.setText(self._selected_repo_path or (self.git.repo_path if self.git else ""))
+        except Exception:
+            pass
         cp = self.pages["Commit"]; cp.file_list.clear()
         for f in s['files']:
             it = QListWidgetItem(cp.file_list)
@@ -1144,12 +1320,30 @@ class GitEaseApp(QWidget):
             cp.file_list.setItemWidget(it, w)
 
     def on_branches_ready(self, branches):
+        try:
+            sender = self.sender()
+            sender_git = getattr(sender, "git", None)
+            sender_path = getattr(sender_git, "repo_path", None)
+            current_path = getattr(self.git, "repo_path", None)
+            if sender_path and current_path and sender_path != current_path:
+                return
+        except Exception:
+            pass
         bp = self.pages["Branches"]; bp.branch_list.clear()
         current = self.git.get_status().get('current_branch', 'Unknown')
         for b in branches:
             bp.branch_list.addItem(f"● {b}" + (" (Current)" if b == current else ""))
 
     def on_history_ready(self, logs):
+        try:
+            sender = self.sender()
+            sender_git = getattr(sender, "git", None)
+            sender_path = getattr(sender_git, "repo_path", None)
+            current_path = getattr(self.git, "repo_path", None)
+            if sender_path and current_path and sender_path != current_path:
+                return
+        except Exception:
+            pass
         hp = self.pages["History"]; hp.history_list.clear()
         for l in logs: hp.history_list.addItem(l)
 
@@ -1163,24 +1357,61 @@ class GitEaseApp(QWidget):
     def toggle_recording(self):
         dash = self.pages["Dashboard"]
         if self.is_recording:
-            self.log("[INFO] Processing audio..."); dash.btn_mic.setEnabled(False); dash.waveform.set_active(False); dash.waveform.setVisible(False)
-            self.recorder.stop(); self.is_recording = False
+            self.log("[INFO] Processing audio...")
+            dash.btn_mic.setEnabled(False)
+            dash.btn_mic.setStyleSheet("")
+            dash.waveform.set_active(False)
+            dash.waveform.setVisible(False)
+            self.recorder.stop()
+            self.is_recording = False
         else:
             idx = self.pages["Settings"].combo_mic.currentData()
             if idx is None: idx = sd.default.device[0]
-            self.log("[INFO] Listening..."); dash.btn_mic.setStyleSheet("background-color: #f56565; color: white;")
-            dash.waveform.setVisible(True); dash.waveform.set_active(True)
-            self.recorder = AudioThread(device_index=idx); self.recorder.finished.connect(self.on_recording_finished); self.recorder.start()
+            self.log("[INFO] Listening... Speak clearly into the microphone.")
+            dash.btn_mic.setStyleSheet("background-color: #f56565; color: white; border: 2px solid #e53e3e;")
+            dash.waveform.setVisible(True)
+            dash.waveform.set_active(True)
+            self.recorder = AudioThread(device_index=idx)
+            self.recorder.finished.connect(self.on_recording_finished)
+            self.recorder.start()
             self.is_recording = True
 
     def on_recording_finished(self, text):
         dash = self.pages["Dashboard"]; dash.btn_mic.setEnabled(True); dash.btn_mic.setStyleSheet("")
-        if text: dash.txt_command.setPlainText(text); self.log(f"[AUDIO] {text}"); self.plan_action()
-        else: self.log("[WARN] No speech detected")
+        if text and text.strip():
+            dash.txt_command.setPlainText(text.strip())
+            self.log(f"[AUDIO] {text.strip()}")
+            self.plan_action()
+        else:
+            self.log("[WARN] No speech detected")
+            # Fallback: prompt user to type
+            reply = self.log("[INFO] Speech not recognized. Type your command in the text box and click Generate Plan.")
+            # Keep mic button enabled so user can retry if needed
 
     def plan_action(self):
         dash = self.pages["Dashboard"]; inst = dash.txt_command.toPlainText()
         if not inst: self.log("[WARN] Enter instruction"); return
+
+        if self.git is None:
+            self.log("[ERROR] Git backend not available")
+            return
+
+        try:
+            initialized = bool(self.git.get_status().get('initialized'))
+        except Exception:
+            initialized = False
+        if not initialized:
+            self.log("[ERROR] Select a valid Git repository first")
+            return
+
+        if not self.is_current_repo_allowed():
+            self.log("[ERROR] Selected repository is not allowed")
+            return
+
+        if processor is None or planner is None or validator is None:
+            self.log("[ERROR] AI planner not configured (missing imports / OPENAI_API_KEY)")
+            return
+
         self.log(f"[AI] Planning..."); dash.btn_plan.setEnabled(False)
         self.ai = AIWorker(inst); self.ai.finished.connect(self.on_plan_finished); self.ai.error.connect(self.on_plan_error); self.ai.start()
 
@@ -1195,6 +1426,9 @@ class GitEaseApp(QWidget):
 
     def execute_plan(self):
         if not self.current_plan_commands: self.log("[WARN] No plan"); return
+        if not self.is_current_repo_allowed():
+            self.log("[ERROR] Execution blocked: selected repository is not owned by the connected GitHub account")
+            return
         dash = self.pages["Dashboard"]; dash.btn_confirm.setEnabled(False); dash.btn_confirm.setText("Executing...")
         if hasattr(dash, "cli_output") and dash.cli_output is not None:
             dash.cli_output.setPlainText("")
@@ -1233,8 +1467,93 @@ class GitEaseApp(QWidget):
         self.ai_worker.start()
 
     def select_repo(self):
+        if GitManager is None:
+            self.log("[ERROR] Git backend not available")
+            return
         p = QFileDialog.getExistingDirectory(self, "Select Repo")
-        if p: self.git = GitManager(p); self.update_git_status(); self.log(f"[INFO] Path: {p}")
+        if not p:
+            return
+
+        candidate = GitManager(p)
+        if not self.is_repo_path_allowed(candidate):
+            self.log("[ERROR] Selected folder is not connected to a repository owned by the connected GitHub account")
+            return
+
+        self.git = candidate
+        self._selected_repo_path = self.git.repo_path
+
+        dash = self.pages.get("Dashboard")
+        if dash is not None and hasattr(dash, "txt_repo_path") and dash.txt_repo_path is not None:
+            dash.txt_repo_path.setText(self.git.repo_path)
+        rp = self.pages.get("Repositories")
+        if rp is not None and hasattr(rp, "lbl_current") and rp.lbl_current is not None:
+            rp.lbl_current.setText(self.git.repo_path)
+
+        self.update_git_status()
+        self.log(f"[INFO] Path: {p}")
+
+    def connect_github_account(self, token):
+        tok = (token or "").strip()
+        if not tok:
+            self.log("[WARN] Enter a GitHub token")
+            return
+
+        try:
+            self.git.set_github_token(tok)
+            user = self.git.github.get_authenticated_user()
+            login = user.get("login") if isinstance(user, dict) else None
+            if not login:
+                self.github_owner_login = None
+                self.log("[ERROR] GitHub token invalid or unauthorized")
+            else:
+                self.github_owner_login = login
+                self.log(f"[SUCCESS] GitHub connected as {login}")
+        except Exception as e:
+            self.github_owner_login = None
+            self.log(f"[ERROR] GitHub connect failed: {e}")
+
+        sp = self.pages.get("Settings")
+        if sp is not None and hasattr(sp, "lbl_gh_user"):
+            sp.lbl_gh_user.setText(self.github_owner_login or "Not connected")
+        # Refresh git user display
+        if sp is not None and hasattr(sp, "update_current_git_user_display"):
+            sp.update_current_git_user_display(self)
+
+    def _parse_github_owner_repo(self, url):
+        if not url or not isinstance(url, str):
+            return None, None
+        u = url.strip()
+
+        m = re.search(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$", u)
+        if not m:
+            return None, None
+        owner = m.group("owner")
+        repo = m.group("repo")
+        return owner, repo
+
+    def is_remote_allowed(self, remote_url):
+        owner, _ = self._parse_github_owner_repo(remote_url)
+        return self.is_owner_allowed(owner)
+
+    def is_owner_allowed(self, owner_login):
+        if not owner_login:
+            return False
+        if owner_login == self.allowed_github_org:
+            return True
+        if self.github_owner_login and owner_login == self.github_owner_login:
+            return True
+        return False
+
+    def is_repo_path_allowed(self, git_mgr):
+        try:
+            out, err, code = git_mgr.run_git(["remote", "get-url", "origin"])
+            origin_url = out.strip() if code == 0 else ""
+        except Exception:
+            origin_url = ""
+        return self.is_remote_allowed(origin_url)
+
+    def is_current_repo_allowed(self):
+        return self.is_repo_path_allowed(self.git)
 
     def git_stage_all(self): self.git.run_command(["add", "."]); self.update_git_status()
     def git_commit(self, m): self.git.run_command(["commit", "-m", m]); self.update_git_status(); self.log(f"[SUCCESS] Committed")

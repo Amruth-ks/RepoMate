@@ -7,6 +7,15 @@ class GitManager:
         self.repo_path = os.path.abspath(repo_path)
         self.github = GitHubAPI()
 
+    def set_github_token(self, token):
+        try:
+            if hasattr(self, "github") and self.github is not None:
+                self.github.set_token(token)
+            else:
+                self.github = GitHubAPI(token)
+        except Exception:
+            self.github = GitHubAPI(token)
+
     def run_git(self, args):
         """Helper to run git commands."""
         try:

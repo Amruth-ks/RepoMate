@@ -6,3 +6,5 @@ aidesk/
 env/
 venv/
 APP2.py
+example/
+.env
