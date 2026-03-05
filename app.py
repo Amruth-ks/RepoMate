@@ -15,6 +15,13 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize, QPropertyAnimation, QEasingCurve, pyqtSlot, pyqtProperty, QPoint
 from PyQt5.QtGui import QColor, QFont, QIcon, QPalette, QLinearGradient, QBrush, QPainter, QPen, QRadialGradient, QPainterPath, QPixmap
 
+# TTS import
+try:
+    import pyttsx3
+    TTS_AVAILABLE = True
+except Exception:
+    TTS_AVAILABLE = False
+
 # Local imports
 try:
     from git_assist.main import processor, planner, validator
@@ -286,6 +293,7 @@ class AIWorker(QThread):
 
 class CommandWorker(QThread):
     progress = pyqtSignal(str)
+    explanation = pyqtSignal(str)
     finished = pyqtSignal()
     
     def __init__(self, git_manager, commands):
@@ -294,11 +302,35 @@ class CommandWorker(QThread):
         self.commands = commands
 
     def run(self):
+        explanations = []
         try:
             for cmd in self.commands:
                 # Execute once
                 result = self.git.execute_commands([cmd])
                 self.progress.emit(result[0] if result else "")
+                # Generate simple explanation
+                if cmd.strip().startswith("git add"):
+                    explanations.append("Staged changes for commit.")
+                elif cmd.strip().startswith("git commit"):
+                    msg = cmd.split("-m")[-1].strip().strip('"\'') if "-m" in cmd else "Committed changes."
+                    explanations.append(f"Committed with message: {msg}")
+                elif cmd.strip().startswith("git push"):
+                    if "--set-upstream" in cmd:
+                        explanations.append("Pushed the new branch to the remote and set it as the upstream branch.")
+                    else:
+                        explanations.append("Pushed commits to the remote repository.")
+                elif cmd.strip().startswith("git pull"):
+                    explanations.append("Pulled latest changes from the remote repository.")
+                elif cmd.strip().startswith("git branch"):
+                    explanations.append("Created or listed branches.")
+                elif cmd.strip().startswith("git checkout"):
+                    explanations.append("Switched to a different branch.")
+                elif cmd.strip().startswith("git merge"):
+                    explanations.append("Merged changes from another branch.")
+                elif cmd.strip().startswith("git status"):
+                    explanations.append("Checked the repository status.")
+                else:
+                    explanations.append(f"Executed: {cmd}")
                 # If push failed due to no upstream, retry with --set-upstream
                 if result and result[0] and "no upstream branch" in result[0]:
                     # Get current branch name
@@ -309,12 +341,18 @@ class CommandWorker(QThread):
                             retry_cmd = f"git push --set-upstream origin {branch}"
                             retry_res = self.git.execute_commands([retry_cmd])
                             self.progress.emit(retry_res[0] if retry_res else "")
+                            explanations.append("Pushed the new branch to the remote and set it as the upstream branch.")
                         else:
                             self.progress.emit("[ERROR] Could not determine current branch for upstream push")
+                            explanations.append("Failed to push: could not determine current branch.")
                     except Exception as e:
                         self.progress.emit(f"[ERROR] Auto-upstream retry failed: {e}")
+                        explanations.append(f"Auto-upstream retry failed: {e}")
+            # Emit combined explanation
+            self.explanation.emit("\n".join(explanations) if explanations else "No commands executed.")
         except Exception as e:
             self.progress.emit(f"[ERROR] {e}")
+            self.explanation.emit(f"Error during execution: {e}")
         finally:
             self.finished.emit()
 
@@ -901,6 +939,23 @@ class DashboardPage(BasePage):
         cli_lay.addWidget(self.cli_output)
         right.addWidget(cli_p)
 
+        exp_p = GlassPanel(); exp_lay = QVBoxLayout(exp_p)
+        _lbl_explanation = QLabel("Explanation")
+        _lbl_explanation.setObjectName("SectionLabel")
+        exp_lay.addWidget(_lbl_explanation)
+        exp_row = QHBoxLayout()
+        self.btn_speak_explanation = PremiumButton("🔊 Speak")
+        self.btn_speak_explanation.setFixedSize(100, 32)
+        self.btn_speak_explanation.clicked.connect(self.speak_explanation)
+        exp_row.addWidget(self.btn_speak_explanation)
+        exp_row.addStretch()
+        exp_lay.addLayout(exp_row)
+        self.cli_explanation = QLabel("No commands executed yet.")
+        self.cli_explanation.setWordWrap(True)
+        self.cli_explanation.setStyleSheet("color: #ccc; font-size: 13px; padding: 8px; background: rgba(255,255,255,5); border-radius: 4px;")
+        exp_lay.addWidget(self.cli_explanation)
+        right.addWidget(exp_p)
+
         st_p = GlassPanel(); st_lay = QVBoxLayout(st_p)
         _lbl_real_time_status = QLabel("Real-time Status")
         _lbl_real_time_status.setObjectName("SectionLabel")
@@ -914,6 +969,22 @@ class DashboardPage(BasePage):
         grid.addLayout(left, 3)
         grid.addLayout(right, 2)
         self.content_layout.addLayout(grid)
+
+    def speak_explanation(self):
+        """Speak the current explanation text using TTS if available."""
+        if not TTS_AVAILABLE:
+            self.main.log("[WARN] TTS not available (pyttsx3 not installed)")
+            return
+        text = self.cli_explanation.text().strip()
+        if not text or text == "No commands executed yet.":
+            self.main.log("[WARN] No explanation to speak")
+            return
+        try:
+            engine = pyttsx3.init()
+            engine.say(text)
+            engine.runAndWait()
+        except Exception as e:
+            self.main.log(f"[ERROR] TTS failed: {e}")
 
 class RepositoriesPage(BasePage):
     def __init__(self, main_app):
@@ -1434,7 +1505,16 @@ class GitEaseApp(QWidget):
             dash.cli_output.setPlainText("")
         self.worker = CommandWorker(self.git, self.current_plan_commands)
         self.worker.progress.connect(self.on_command_progress)
+        self.worker.explanation.connect(self.on_command_explanation)
         self.worker.finished.connect(self.on_exec_finished); self.worker.start()
+
+    def on_command_explanation(self, explanation):
+        dash = self.pages.get("Dashboard")
+        if dash is not None and hasattr(dash, "cli_explanation") and dash.cli_explanation is not None:
+            try:
+                dash.cli_explanation.setText(explanation)
+            except Exception:
+                pass
 
     def on_command_progress(self, msg):
         self.log(msg)
@@ -1451,13 +1531,36 @@ class GitEaseApp(QWidget):
         dash.plan_card.setVisible(False); dash.commit_assist.setVisible(False); self.update_git_status(); self.log("[SUCCESS] Done")
 
     def generate_commit_ai(self):
-        dash = self.pages["Dashboard"]; inst = dash.txt_command.toPlainText() or "current changes"
-        self.log("[AI] Generating commit message..."); dash.txt_commit_msg.setPlaceholderText("Generating...")
-        
+        if not self.git:
+            self.log("[ERROR] Git backend not available")
+            return
+        # Get staged diff
+        diff = self.git.get_staged_diff()
+        if not diff.strip():
+            self.log("[WARN] No staged changes to analyze")
+            return
+        dash = self.pages["Dashboard"]
+        self.log("[AI] Generating commit message from staged changes...")
+        dash.txt_commit_msg.setPlaceholderText("Generating...")
+
         def run_ai():
             try:
-                p = planner.generate_plan(f"Suggest commit message: {inst}")
-                return p.get('commit_message', "Update")
+                # Use OpenAI directly to generate a concise commit message from diff
+                import openai
+                prompt = (
+                    "You are an expert developer. Write a concise, conventional commit message for the following staged diff.\n"
+                    "Use the format: <type>(<scope>): <description>\n"
+                    "Keep it under 72 characters. No extra text.\n\n"
+                    f"Diff:\n{diff}"
+                )
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0
+                )
+                msg = response["choices"][0]["message"]["content"].strip()
+                # Fallback to generic if AI fails
+                return msg if msg else "Update"
             except Exception as e:
                 raise e
 

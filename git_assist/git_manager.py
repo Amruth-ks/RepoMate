@@ -155,6 +155,11 @@ class GitManager:
                 
         return results
 
+    def get_staged_diff(self):
+        """Return the diff of staged changes."""
+        out, _, code = self.run_git(["diff", "--cached"])
+        return out if code == 0 else ""
+
     def clone(self, url, target_dir):
         """Clones a repository into a target directory."""
         if not os.path.isabs(target_dir):
