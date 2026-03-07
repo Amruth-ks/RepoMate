@@ -110,6 +110,16 @@ class GitManager:
             return out.split("\n")
         return []
 
+    def checkout(self, branch_name):
+        """Switch to the specified branch."""
+        if not branch_name:
+            return False, "Branch name is empty"
+        out, err, code = self.run_git(["checkout", branch_name])
+        if code == 0:
+            return True, out.strip() or f"Switched to '{branch_name}'"
+        else:
+            return False, err.strip() or f"Failed to switch to '{branch_name}'"
+
     def run_command(self, args):
         """Standard runner for UI callbacks."""
         return self.run_git(args)[0]
